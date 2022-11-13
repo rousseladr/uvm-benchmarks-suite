@@ -31,6 +31,7 @@ double get_elapsedtime(void)
 
 int main(int argc, char *argv[])
 {
+  const int nb_test = 20;
   int s, j;
   int cpu = -1;
   cpu_set_t cpuset;
@@ -45,9 +46,9 @@ int main(int argc, char *argv[])
   cudaGetDeviceCount(&gpucount);
 
   double t0 = 0., t1 = 0., duration = 0.;
-  int *tgpu = (int*)malloc(sizeof(int) * numcores);
-  double *HtD = (double*)malloc(sizeof(double) * numcores);
-  double *DtH = (double*)malloc(sizeof(double) * numcores);
+  int *tgpu = (int*)malloc(sizeof(int) * numcores * gpucount);
+  double *HtD = (double*)malloc(sizeof(double) * numcores * gpucount);
+  double *DtH = (double*)malloc(sizeof(double) * numcores * gpucount);
   memset(tgpu, -1, sizeof(double) * numcores);
   memset(HtD, 0, sizeof(double) * numcores);
   memset(DtH, 0, sizeof(double) * numcores);
@@ -99,50 +100,63 @@ int main(int argc, char *argv[])
     printf("Running on NUMA %d of %d\n", cur_numanode, numanodes);
 
     //int deviceId = (cur_numanode/2)%gpucount;
-    int deviceId = coreId%gpucount;
+    //int deviceId = coreId%gpucount;
     //int deviceId = 0;
-    cudaSetDevice(deviceId);
-    printf("Set Device to %d\n", deviceId);
-    tgpu[coreId] = deviceId;
-
-    double *A;
-    A = (double*) malloc(N * sizeof(double));
-
-    for(int i = 0 ; i < N; ++i)
+    for(int deviceId = 0; deviceId < gpucount; ++deviceId)
     {
-      A[i] = 1.0 * i;
+      cudaSetDevice(deviceId);
+      printf("Set Device to %d\n", deviceId);
+      tgpu[coreId * gpucount + deviceId] = deviceId;
+
+      double *A;
+      A = (double*) malloc(N * sizeof(double));
+
+      for(int i = 0 ; i < N; ++i)
+      {
+        A[i] = 1.0 * i;
+      }
+
+      double *d_A;
+      cudaMalloc(&d_A, N * sizeof(double));
+
+      duration = 0.;
+      for(int k = 0; k < nb_test; ++k)
+      {
+        t0 = get_elapsedtime();
+
+        cudaMemcpy(d_A, A, N * sizeof(double), cudaMemcpyHostToDevice);
+        cudaDeviceSynchronize();
+
+        t1 = get_elapsedtime();
+        duration += (t1 - t0);
+      }
+
+      duration /= nb_test;
+      fprintf(stdout, "Performance results: \n");
+      fprintf(stdout, "HostToDevice>  Time: %lf s\n", duration);
+      HtD[coreId * gpucount + deviceId] = duration;
+
+      duration = 0.;
+      for(int k = 0; k < nb_test; ++k)
+      {
+        t0 = get_elapsedtime();
+
+        cudaMemcpy(A, d_A, N * sizeof(double), cudaMemcpyDeviceToHost);
+        cudaDeviceSynchronize();
+
+        t1 = get_elapsedtime();
+
+        duration += (t1 - t0);
+      }
+
+      duration /= nb_test;
+      fprintf(stdout, "DeviceToHost>  Time: %lf s\n\n", duration);
+      DtH[coreId * gpucount + deviceId] = duration;
+
+      cudaFree(d_A);
+      free(A);
+      //coreId += numcores / numanodes;
     }
-
-    double *d_A;
-    cudaMalloc(&d_A, N * sizeof(double));
-
-    t0 = get_elapsedtime();
-
-    cudaMemcpy(d_A, A, N * sizeof(double), cudaMemcpyHostToDevice);
-    cudaDeviceSynchronize();
-
-    t1 = get_elapsedtime();
-
-
-    duration = (t1 - t0);
-    fprintf(stdout, "Performance results: \n");
-    fprintf(stdout, "HostToDevice>  Time: %lf s\n", duration);
-    HtD[coreId] = duration;
-
-    t0 = get_elapsedtime();
-
-    cudaMemcpy(A, d_A, N * sizeof(double), cudaMemcpyDeviceToHost);
-    cudaDeviceSynchronize();
-
-    t1 = get_elapsedtime();
-
-    duration = (t1 - t0);
-    fprintf(stdout, "DeviceToHost>  Time: %lf s\n\n", duration);
-    DtH[coreId] = duration;
-
-    cudaFree(d_A);
-    free(A);
-    //coreId += numcores / numanodes;
     coreId += 1;
   }
 
@@ -157,7 +171,10 @@ int main(int argc, char *argv[])
   fprintf(outputFile, "core\tgpu\tHostToDevice\tDeviceToHost\n");
   for(int i = 0; i < numcores; ++i)
   {
-    fprintf(outputFile, "%d\t%d\t%lf\t%lf\n", i, tgpu[i], HtD[i], DtH[i]);
+    for(int d = 0; d < gpucount; ++d)
+    {
+      fprintf(outputFile, "%d\t%d\t%lf\t%lf\n", i, tgpu[i * gpucount + d], HtD[i * gpucount + d], DtH[i * gpucount + d]);
+    }
   }
 
   fclose(outputFile);
