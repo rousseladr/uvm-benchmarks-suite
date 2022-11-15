@@ -24,7 +24,16 @@ double get_elapsedtime(void)
   return (double)st.tv_sec + get_sub_seconde(st);
 }
 
-#define N 1E6
+#define N (unsigned long int)1E6
+
+__global__
+void init(double *x, double val)
+{
+  int index = blockIdx.x * blockDim.x + threadIdx.x;
+  if(index < N)
+    x[index] = val;
+}
+
 
 #define handle_error_en(en, msg) \
   do { errno = en; perror(msg); exit(EXIT_FAILURE); } while (0)
@@ -109,59 +118,77 @@ int main(int argc, char *argv[])
     printf("Running on CPU %d of %d\n", cpu, numcores);
     printf("Running on NUMA %d of %d\n", cur_numanode, numanodes);
 
-    //int deviceId = (cur_numanode/2)%gpucount;
-    //int deviceId = coreId%gpucount;
-    //int deviceId = 0;
     for(int deviceId = 0; deviceId < gpucount; ++deviceId)
     {
       cudaSetDevice(deviceId);
       printf("Set Device to %d\n", deviceId);
       tgpu[coreId * gpucount + deviceId] = deviceId;
 
-      double *A;
-      A = (double*) malloc(N * sizeof(double));
-
-      for(int i = 0 ; i < N; ++i)
-      {
-        A[i] = 1.0 * i;
-      }
-
       double *d_A;
-      cudaMalloc(&d_A, N * sizeof(double));
+      cudaStream_t stream;
+
+      cudaMallocManaged(&d_A, N * sizeof(double));
+      cudaMemAdvise(d_A, N * sizeof(double), cudaMemAdviseSetPreferredLocation, cudaCpuDeviceId);
+      cudaStreamCreate(&stream);
 
       duration = 0.;
-      double throughput = 0.;
       for(int k = 0; k < nb_test; ++k)
       {
+        for(int i = 0 ; i < N; ++i)
+        {
+          d_A[i] = 1.0 * i;
+        }
+        cudaDeviceSynchronize();
+
         t0 = get_elapsedtime();
 
-        cudaMemcpy(d_A, A, N * sizeof(double), cudaMemcpyHostToDevice);
-        cudaDeviceSynchronize();
+        cudaMemPrefetchAsync(d_A, N * sizeof(double), deviceId, stream);
+        cudaStreamSynchronize(stream);
 
         t1 = get_elapsedtime();
         duration += (t1 - t0);
       }
 
       duration /= nb_test;
-      throughput = size_mb / (duration * 1024);
+      double throughput = size_mb / (duration * 1024);
       fprintf(stdout, "Performance results: \n");
       fprintf(stdout, "HostToDevice>  Time: %lf s\n", duration);
       fprintf(stdout, "HostToDevice>  Throughput: %.2lf Gb/s\n", throughput);
       HtD[coreId * gpucount + deviceId] = duration;
       HtD_gbs[coreId * gpucount + deviceId] = throughput;
+      cudaFree(d_A);
+      cudaStreamSynchronize(stream);
+
+      double *d_B;
+      cudaMallocManaged(&d_B, N * sizeof(double));
+      cudaMemAdvise(d_B, N * sizeof(double), cudaMemAdviseSetPreferredLocation, deviceId);
+      cudaDeviceSynchronize();
+
+      dim3 blockSize(32, 1, 1);
+      int nbBlocks = (N + 32 - 1) / 32;
+      dim3 gridSize(nbBlocks, 1, 1);
 
       duration = 0.;
       for(int k = 0; k < nb_test; ++k)
       {
+        // First: push data on GPU
+        init<<<gridSize, blockSize>>>(d_B, 0.);
+        cudaDeviceSynchronize();
+
         t0 = get_elapsedtime();
 
-        cudaMemcpy(A, d_A, N * sizeof(double), cudaMemcpyDeviceToHost);
-        cudaDeviceSynchronize();
+        // Second: transfer data from GPU to CPU using prefetch mecanism
+        cudaMemPrefetchAsync(d_B, N * sizeof(double), cudaCpuDeviceId, stream);
+        // Wait until completion
+        cudaStreamSynchronize(stream);
 
         t1 = get_elapsedtime();
 
         duration += (t1 - t0);
       }
+
+      cudaFree(d_B);
+      cudaStreamDestroy(stream);
 
       duration /= nb_test;
       throughput = size_mb / (duration * 1024);
@@ -170,18 +197,15 @@ int main(int argc, char *argv[])
       DtH[coreId * gpucount + deviceId] = duration;
       DtH_gbs[coreId * gpucount + deviceId] = throughput;
 
-      cudaFree(d_A);
-      free(A);
-      //coreId += numcores / numanodes;
     }
     coreId += 1;
   }
 
   FILE * outputFile;
-  outputFile = fopen( "numa_explicit_time.csv", "w+" );
+  outputFile = fopen( "numa_implicit_time.csv", "w+" );
   if (outputFile == NULL)
   {
-    printf( "Cannot open file %s\n", "numa_explicit_time.csv" );
+    printf( "Cannot open file %s\n", "numa_implicit_time.csv" );
     exit(EXIT_FAILURE);
   }
 
@@ -196,10 +220,10 @@ int main(int argc, char *argv[])
 
   fclose(outputFile);
 
-  outputFile = fopen( "numa_explicit_gbs.csv", "w+" );
+  outputFile = fopen( "numa_implicit_gbs.csv", "w+" );
   if (outputFile == NULL)
   {
-    printf( "Cannot open file %s\n", "numa_explicit_gbs.csv" );
+    printf( "Cannot open file %s\n", "numa_implicit_gbs.csv" );
     exit(EXIT_FAILURE);
   }
 
