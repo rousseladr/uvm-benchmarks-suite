@@ -11,6 +11,7 @@
 #include <cuda.h>
 #include <time.h>
 #include <inttypes.h>
+#include <sys/mman.h>
 
 #define gettime(t) clock_gettime(CLOCK_MONOTONIC_RAW, t)
 #define get_sub_seconde(t) (1e-9*(double)t.tv_nsec)
@@ -119,7 +120,7 @@ int main(int argc, char *argv[])
       tgpu[coreId * gpucount + deviceId] = deviceId;
 
       double *A;
-      A = (double*) malloc(N * sizeof(double));
+      A = (double*) mmap(0, N * sizeof(double), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
 
       for(int i = 0 ; i < N; ++i)
       {
@@ -131,6 +132,7 @@ int main(int argc, char *argv[])
 
       duration = 0.;
       double throughput = 0.;
+      cudaDeviceSynchronize();
       for(int k = 0; k < nb_test; ++k)
       {
         t0 = get_elapsedtime();
@@ -151,6 +153,7 @@ int main(int argc, char *argv[])
       HtD_gbs[coreId * gpucount + deviceId] = throughput;
 
       duration = 0.;
+      cudaDeviceSynchronize();
       for(int k = 0; k < nb_test; ++k)
       {
         t0 = get_elapsedtime();
@@ -171,7 +174,7 @@ int main(int argc, char *argv[])
       DtH_gbs[coreId * gpucount + deviceId] = throughput;
 
       cudaFree(d_A);
-      free(A);
+      munmap(A, N * sizeof(double));
       //coreId += numcores / numanodes;
     }
     coreId += 1;
