@@ -21,8 +21,22 @@ plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Explicit")
 plt.suptitle("Host To Device")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
-plt.savefig("A100_explicit.pdf", format="pdf", bbox_inches="tight")
-#  plt.show()
+plt.savefig("A100_HtD_explicit.pdf", format="pdf", bbox_inches="tight")
+
+plt.clf()
+
+A = np.zeros((x.max()+1,y.max()+1))
+A[x,y] = df["DeviceToHost"]
+
+print(A.min())
+print(A.max())
+
+sns.heatmap(A, vmin=51, vmax=119, center=85, cmap="ocean")
+plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Explicit")
+plt.suptitle("Device To Host")
+plt.xlabel('GPU Number')
+plt.ylabel('Core Number')
+plt.savefig("A100_DtH_explicit.pdf", format="pdf", bbox_inches="tight")
 
 plt.clf()
 
@@ -41,4 +55,21 @@ plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Implicit (Managed)")
 plt.suptitle("Host To Device")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
-plt.savefig("A100_implicit.pdf", format="pdf", bbox_inches="tight")
+plt.savefig("A100_HtD_implicit.pdf", format="pdf", bbox_inches="tight")
+
+plt.clf()
+
+A = np.zeros((x.max()+1,y.max()+1))
+A[x,y] = df["DeviceToHost"]
+
+print(A.min())
+print(A.max())
+
+sns.heatmap(A, vmin=51, vmax=119, center=85, cmap="ocean")
+plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Implicit (Managed)")
+plt.suptitle("Device To Host")
+plt.xlabel('GPU Number')
+plt.ylabel('Core Number')
+plt.savefig("A100_DtH_implicit.pdf", format="pdf", bbox_inches="tight")
+
+plt.clf()
