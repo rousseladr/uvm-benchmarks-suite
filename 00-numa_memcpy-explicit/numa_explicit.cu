@@ -32,7 +32,7 @@ double get_elapsedtime(void)
 
 int main(int argc, char *argv[])
 {
-  const int nb_test = 20;
+  int nb_test = 20;
   int s, j;
   int cpu = -1;
   cpu_set_t cpuset;

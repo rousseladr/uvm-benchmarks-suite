@@ -40,7 +40,7 @@ void init(double *x, double val)
 
 int main(int argc, char *argv[])
 {
-  const int nb_test = 20;
+  int nb_test = 20;
   int s, j;
   int cpu = -1;
   cpu_set_t cpuset;
@@ -136,7 +136,7 @@ int main(int argc, char *argv[])
       {
         for(int i = 0 ; i < N; ++i)
         {
-          d_A[i] = 1.0 * i;
+          d_A[i] += 1.0 * i;
         }
         cudaDeviceSynchronize();
 
