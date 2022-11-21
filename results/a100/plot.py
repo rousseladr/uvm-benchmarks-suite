@@ -16,8 +16,8 @@ A[x,y] = df["HostToDevice"]
 print(A.min())
 print(A.max())
 
-sns.heatmap(A, vmin=105, vmax=137, center=121, cmap="ocean")
-plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Explicit")
+sns.heatmap(A, vmin=105, vmax=153, center=129, cmap="ocean")
+plt.title("Throughput (Gb/s) of cudaMemcpy on A100 - Explicit")
 plt.suptitle("Host To Device")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
@@ -31,8 +31,8 @@ A[x,y] = df["DeviceToHost"]
 print(A.min())
 print(A.max())
 
-sns.heatmap(A, vmin=51, vmax=119, center=85, cmap="ocean")
-plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Explicit")
+sns.heatmap(A, vmin=37, vmax=122, center=80, cmap="ocean")
+plt.title("Throughput (Gb/s) of cudaMemcpy on A100 - Explicit")
 plt.suptitle("Device To Host")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
@@ -50,8 +50,8 @@ A[x,y] = df["HostToDevice"]
 print(A.min())
 print(A.max())
 
-sns.heatmap(A, vmin=105, vmax=137, center=121, cmap="ocean")
-plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Implicit (Managed)")
+sns.heatmap(A, vmin=105, vmax=153, center=129, cmap="ocean")
+plt.title("Throughput (Gb/s) of cudaMemcpy on A100 - Implicit (Managed)")
 plt.suptitle("Host To Device")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
@@ -65,8 +65,8 @@ A[x,y] = df["DeviceToHost"]
 print(A.min())
 print(A.max())
 
-sns.heatmap(A, vmin=51, vmax=119, center=85, cmap="ocean")
-plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Implicit (Managed)")
+sns.heatmap(A, vmin=37, vmax=122, center=80, cmap="ocean")
+plt.title("Throughput (Gb/s) of cudaMemcpy on A100 - Implicit (Managed)")
 plt.suptitle("Device To Host")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
