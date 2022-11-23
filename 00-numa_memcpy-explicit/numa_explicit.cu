@@ -61,7 +61,10 @@ int main(int argc, char *argv[])
 
   float size_kb = (float)((N * sizeof(double) * CHAR_BIT)/1024);
   float size_mb = (float)((N * sizeof(double) * CHAR_BIT)/(1024*1024));
-  printf("Size of array: %d bits\n", N * sizeof(double) * CHAR_BIT);
+  printf("Size of array: %.0f Bytes\n", (double)(N * sizeof(double)));
+  printf("Size of array: %.2f KB\n", (float)(N * sizeof(double)/1000));
+  printf("Size of array: %.2f MB\n", (float)(N * sizeof(double)/(1000*1000)));
+  printf("Size of array: %.0f bits\n", (double)(N * sizeof(double) * CHAR_BIT));
   printf("Size of array: %.2f Kb\n", size_kb);
   printf("Size of array: %.2f Mb\n", size_mb);
 
@@ -122,6 +125,7 @@ int main(int argc, char *argv[])
 
       double *A;
       A = (double*) mmap(0, N * sizeof(double), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+      //A = (double*) numa_alloc_onnode(N * sizeof(double), cur_numanode);
 
       for(int i = 0 ; i < N; ++i)
       {
