@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <numa.h>
+#include <numaif.h>
 #include <cuda.h>
 #include <time.h>
 #include <inttypes.h>
@@ -25,7 +26,7 @@ double get_elapsedtime(void)
   return (double)st.tv_sec + get_sub_seconde(st);
 }
 
-#define N 1E6
+#define N 1E8
 
 #define handle_error_en(en, msg) \
   do { errno = en; perror(msg); exit(EXIT_FAILURE); } while (0)
@@ -125,6 +126,20 @@ int main(int argc, char *argv[])
       for(int i = 0 ; i < N; ++i)
       {
         A[i] = 1.0 * i;
+      }
+
+      int allocnumaid = -1;
+      get_mempolicy(&allocnumaid, NULL, 0, (void*)A, MPOL_F_NODE | MPOL_F_ADDR);
+      if(allocnumaid != cur_numanode)
+      {
+        fprintf(stderr, "ERROR: bad NUMA allocation\n");
+        munmap(A, N * sizeof(double));
+        free(tgpu);
+        free(HtD);
+        free(DtH);
+        free(HtD_gbs);
+        free(DtH_gbs);
+        exit(EXIT_FAILURE);
       }
 
       double *d_A;
