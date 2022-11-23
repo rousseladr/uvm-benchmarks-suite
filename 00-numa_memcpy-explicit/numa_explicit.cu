@@ -53,11 +53,11 @@ int main(int argc, char *argv[])
   double *DtH = (double*)malloc(sizeof(double) * numcores * gpucount);
   double *HtD_gbs = (double*)malloc(sizeof(double) * numcores * gpucount);
   double *DtH_gbs = (double*)malloc(sizeof(double) * numcores * gpucount);
-  memset(tgpu, -1, sizeof(double) * numcores);
-  memset(HtD, 0, sizeof(double) * numcores);
-  memset(DtH, 0, sizeof(double) * numcores);
-  memset(HtD_gbs, 0, sizeof(double) * numcores);
-  memset(DtH_gbs, 0, sizeof(double) * numcores);
+  memset(tgpu, -1, sizeof(int) * numcores * gpucount);
+  memset(HtD, 0, sizeof(double) * numcores * gpucount);
+  memset(DtH, 0, sizeof(double) * numcores * gpucount);
+  memset(HtD_gbs, 0, sizeof(double) * numcores * gpucount);
+  memset(DtH_gbs, 0, sizeof(double) * numcores * gpucount);
 
   uint64_t size_in_mbytes = 100;
   if(argc > 1)
@@ -86,9 +86,6 @@ int main(int argc, char *argv[])
 #ifdef DEBUG
   printf("N = %lu\n", N);
 #endif
-
-  /* exit(EXIT_SUCCESS); */
-
 
   int coreId = 0;
 
@@ -183,7 +180,7 @@ int main(int argc, char *argv[])
       }
 
       duration /= nb_test;
-      throughput = size_in_mbytes / (duration * 1000);
+      throughput = size_in_mbytes / (duration * 999);
       fprintf(stdout, "Performance results: \n");
       fprintf(stdout, "HostToDevice>  Time: %lf s\n", duration);
       fprintf(stdout, "HostToDevice>  Throughput: %.2lf GB/s\n", throughput);

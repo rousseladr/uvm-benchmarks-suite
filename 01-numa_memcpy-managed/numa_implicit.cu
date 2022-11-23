@@ -24,10 +24,10 @@ double get_elapsedtime(void)
   return (double)st.tv_sec + get_sub_seconde(st);
 }
 
-#define N (unsigned long int)1E6
+//#define N (unsigned long int)1E6
 
 __global__
-void init(double *x, double val)
+void init(uint64_t *x, uint64_t val, uint64_t N)
 {
   int index = blockIdx.x * blockDim.x + threadIdx.x;
   if(index < N)
@@ -60,17 +60,39 @@ int main(int argc, char *argv[])
   double *DtH = (double*)malloc(sizeof(double) * numcores * gpucount);
   double *HtD_gbs = (double*)malloc(sizeof(double) * numcores * gpucount);
   double *DtH_gbs = (double*)malloc(sizeof(double) * numcores * gpucount);
-  memset(tgpu, -1, sizeof(double) * numcores);
-  memset(HtD, 0, sizeof(double) * numcores);
-  memset(DtH, 0, sizeof(double) * numcores);
-  memset(HtD_gbs, 0, sizeof(double) * numcores);
-  memset(DtH_gbs, 0, sizeof(double) * numcores);
+  memset(tgpu, -1, sizeof(int) * numcores * gpucount);
+  memset(HtD, 0, sizeof(double) * numcores * gpucount);
+  memset(DtH, 0, sizeof(double) * numcores * gpucount);
+  memset(HtD_gbs, 0, sizeof(double) * numcores * gpucount);
+  memset(DtH_gbs, 0, sizeof(double) * numcores * gpucount);
 
-  float size_kb = (float)((N * sizeof(double) * CHAR_BIT)/1024);
-  float size_mb = (float)((N * sizeof(double) * CHAR_BIT)/(1024*1024));
-  printf("Size of array: %d bits\n", N * sizeof(double) * CHAR_BIT);
+  uint64_t size_in_mbytes = 100;
+  if(argc > 1)
+  {
+    size_in_mbytes = atoi(argv[1]);
+  }
+  double size_in_kbytes = size_in_mbytes*1000;
+  double size_in_bytes = size_in_kbytes*1000;
+
+#ifdef DEBUG
+  printf("Size of array: %lu Bytes\n", (uint64_t)(size_in_bytes));
+  printf("Size of array: %.2f KB\n", (double)(size_in_kbytes));
+#endif
+  printf("Size of array: %.2f MB\n", (double)(size_in_mbytes));
+
+#ifdef DISPLAY_BITS
+  float size_kb = (float)(size_in_kbytes * CHAR_BIT);
+  float size_mb = (float)(size_in_mbytes * CHAR_BIT);
+  printf("Size of array: %lu bits\n", (uint64_t)(size_in_bytes * CHAR_BIT));
   printf("Size of array: %.2f Kb\n", size_kb);
   printf("Size of array: %.2f Mb\n", size_mb);
+#endif
+
+  uint64_t N = (size_in_bytes + sizeof(uint64_t) - 1) / sizeof(uint64_t);
+
+#ifdef DEBUG
+  printf("N = %lu\n", N);
+#endif
 
   int coreId = 0;
 
@@ -124,11 +146,11 @@ int main(int argc, char *argv[])
       printf("Set Device to %d\n", deviceId);
       tgpu[coreId * gpucount + deviceId] = deviceId;
 
-      double *d_A;
+      uint64_t *d_A;
       cudaStream_t stream;
 
-      cudaMallocManaged(&d_A, N * sizeof(double));
-      cudaMemAdvise(d_A, N * sizeof(double), cudaMemAdviseSetPreferredLocation, cudaCpuDeviceId);
+      cudaMallocManaged(&d_A, N * sizeof(uint64_t));
+      cudaMemAdvise(d_A, N * sizeof(uint64_t), cudaMemAdviseSetPreferredLocation, cudaCpuDeviceId);
       cudaStreamCreate(&stream);
 
       duration = 0.;
@@ -136,13 +158,13 @@ int main(int argc, char *argv[])
       {
         for(int i = 0 ; i < N; ++i)
         {
-          d_A[i] += 1.0 * i;
+          d_A[i] += (uint64_t)i;
         }
         cudaDeviceSynchronize();
 
         t0 = get_elapsedtime();
 
-        cudaMemPrefetchAsync(d_A, N * sizeof(double), deviceId, stream);
+        cudaMemPrefetchAsync(d_A, N * sizeof(uint64_t), deviceId, stream);
         cudaStreamSynchronize(stream);
 
         t1 = get_elapsedtime();
@@ -150,7 +172,7 @@ int main(int argc, char *argv[])
       }
 
       duration /= nb_test;
-      double throughput = size_mb / (duration * 1024);
+      double throughput = size_in_mbytes / (duration * 1000);
       fprintf(stdout, "Performance results: \n");
       fprintf(stdout, "HostToDevice>  Time: %lf s\n", duration);
       fprintf(stdout, "HostToDevice>  Throughput: %.2lf Gb/s\n", throughput);
@@ -159,9 +181,9 @@ int main(int argc, char *argv[])
       cudaFree(d_A);
       cudaStreamSynchronize(stream);
 
-      double *d_B;
-      cudaMallocManaged(&d_B, N * sizeof(double));
-      cudaMemAdvise(d_B, N * sizeof(double), cudaMemAdviseSetPreferredLocation, deviceId);
+      uint64_t *d_B;
+      cudaMallocManaged(&d_B, N * sizeof(uint64_t));
+      cudaMemAdvise(d_B, N * sizeof(uint64_t), cudaMemAdviseSetPreferredLocation, deviceId);
       cudaDeviceSynchronize();
 
       dim3 blockSize(32, 1, 1);
@@ -172,13 +194,13 @@ int main(int argc, char *argv[])
       for(int k = 0; k < nb_test; ++k)
       {
         // First: push data on GPU
-        init<<<gridSize, blockSize>>>(d_B, 0.);
+        init<<<gridSize, blockSize>>>(d_B, 0x0, N);
         cudaDeviceSynchronize();
 
         t0 = get_elapsedtime();
 
         // Second: transfer data from GPU to CPU using prefetch mecanism
-        cudaMemPrefetchAsync(d_B, N * sizeof(double), cudaCpuDeviceId, stream);
+        cudaMemPrefetchAsync(d_B, N * sizeof(uint64_t), cudaCpuDeviceId, stream);
         // Wait until completion
         cudaStreamSynchronize(stream);
 
@@ -191,7 +213,7 @@ int main(int argc, char *argv[])
       cudaStreamDestroy(stream);
 
       duration /= nb_test;
-      throughput = size_mb / (duration * 1024);
+      throughput = size_in_mbytes / (duration * 1000);
       fprintf(stdout, "DeviceToHost>  Time: %lf s\n", duration);
       fprintf(stdout, "DeviceToHost>  Throughput: %.2lf Gb/s\n\n", throughput);
       DtH[coreId * gpucount + deviceId] = duration;
@@ -201,11 +223,13 @@ int main(int argc, char *argv[])
     coreId += 1;
   }
 
+  char buff_implicit_time[100];
+  snprintf(buff_implicit_time, 100, "%lu-MB_numa_implicit_time.csv", size_in_mbytes);
   FILE * outputFile;
-  outputFile = fopen( "numa_implicit_time.csv", "w+" );
+  outputFile = fopen( buff_implicit_time, "w+" );
   if (outputFile == NULL)
   {
-    printf( "Cannot open file %s\n", "numa_implicit_time.csv" );
+    printf( "Cannot open file %s\n", buff_implicit_time );
     exit(EXIT_FAILURE);
   }
 
@@ -220,10 +244,12 @@ int main(int argc, char *argv[])
 
   fclose(outputFile);
 
-  outputFile = fopen( "numa_implicit_gbs.csv", "w+" );
+  char buff_implicit_gbs[100];
+  snprintf(buff_implicit_gbs, 100, "%lu-MB_numa_implicit_gbs.csv", size_in_mbytes);
+  outputFile = fopen( buff_implicit_gbs, "w+" );
   if (outputFile == NULL)
   {
-    printf( "Cannot open file %s\n", "numa_implicit_gbs.csv" );
+    printf( "Cannot open file %s\n", buff_implicit_gbs );
     exit(EXIT_FAILURE);
   }
 
