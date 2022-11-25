@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <numa.h>
+#include <numaif.h>
 #include <cuda.h>
 #include <time.h>
 #include <inttypes.h>
@@ -25,7 +26,7 @@ double get_elapsedtime(void)
   return (double)st.tv_sec + get_sub_seconde(st);
 }
 
-#define N 1E6
+//#define N 1E6
 
 #define handle_error_en(en, msg) \
   do { errno = en; perror(msg); exit(EXIT_FAILURE); } while (0)
@@ -46,7 +47,8 @@ int main(int argc, char *argv[])
   int gpucount = -1;
   cudaGetDeviceCount(&gpucount);
 
-  double t0 = 0., t1 = 0., duration = 0.;
+  //double t0 = 0., t1 = 0., duration = 0.;
+  double duration = 0.;
   int *tgpu = (int*)malloc(sizeof(int) * numcores * gpucount);
   double *HtD = (double*)malloc(sizeof(double) * numcores * gpucount);
   double *DtH = (double*)malloc(sizeof(double) * numcores * gpucount);
@@ -58,23 +60,37 @@ int main(int argc, char *argv[])
   memset(HtD_gbs, 0, sizeof(double) * numcores);
   memset(DtH_gbs, 0, sizeof(double) * numcores);
 
-  float size_kb = (float)((N * sizeof(double) * CHAR_BIT)/1024);
-  float size_mb = (float)((N * sizeof(double) * CHAR_BIT)/(1024*1024));
-  printf("Size of array: %d bits\n", N * sizeof(double) * CHAR_BIT);
+  uint64_t size_in_mbytes = 100;
+  if(argc > 1)
+  {
+    size_in_mbytes = atoi(argv[1]);
+  }
+  double size_in_kbytes = size_in_mbytes*1000;
+  double size_in_bytes = size_in_kbytes*1000;
+
+#ifdef DEBUG
+  printf("Size of array: %lu Bytes\n", (uint64_t)(size_in_bytes));
+  printf("Size of array: %.2f KB\n", (double)(size_in_kbytes));
+#endif
+  printf("Size of array: %.2f MB\n", (double)(size_in_mbytes));
+
+#ifdef DISPLAY_BITS
+  float size_kb = (float)(size_in_kbytes * CHAR_BIT);
+  float size_mb = (float)(size_in_mbytes * CHAR_BIT);
+  printf("Size of array: %lu bits\n", (uint64_t)(size_in_bytes * CHAR_BIT));
   printf("Size of array: %.2f Kb\n", size_kb);
   printf("Size of array: %.2f Mb\n", size_mb);
+#endif
 
-  printf("Table has %ld entries\n", (long int)N);
-  printf("Size of double: %ld bytes\n", sizeof(double));
+  uint64_t N = (size_in_bytes + sizeof(uint64_t) - 1) / sizeof(uint64_t);
 
-  int size_in_bytes = N * sizeof(double);
-  printf("Table size: %ld bytes\n", size_in_bytes);
+  printf("Table size: %lu bytes\n", (uint64_t)(size_in_bytes));
 
   long int page_size = 2 * 1000 * 1000;
   printf("Page size: %ld bytes\n", page_size);
 
-  long int x = page_size / sizeof(double);
-  printf("Nb double per page: %ld entries\n", x);
+  long int x = page_size / sizeof(uint64_t);
+  printf("Nb \'uint64_t\' per page: %ld entries\n", x);
 
   long int nb_memcpy = N / x;
 
@@ -135,55 +151,85 @@ int main(int argc, char *argv[])
       cudaStream_t stream;
       cudaStreamCreate(&stream);
 
-      double *A;
-      A = (double*) mmap(0, N * sizeof(double), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+      cudaEvent_t start, stop;
+      cudaEventCreate(&start);
+      cudaEventCreate(&stop);
+
+      uint64_t *A;
+      A = (uint64_t*) mmap(0, N * sizeof(uint64_t), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
 
       for(int i = 0 ; i < N; ++i)
       {
         A[i] = 1.0 * i;
       }
 
-      double *d_A;
-      cudaMalloc(&d_A, N * sizeof(double));
+      int allocnumaid = -1;
+      get_mempolicy(&allocnumaid, NULL, 0, (void*)A, MPOL_F_NODE | MPOL_F_ADDR);
+      if(allocnumaid != cur_numanode)
+      {
+        fprintf(stderr, "ERROR: bad NUMA allocation\n");
+        munmap(A, N * sizeof(uint64_t));
+        free(tgpu);
+        free(HtD);
+        free(DtH);
+        free(HtD_gbs);
+        free(DtH_gbs);
+        exit(EXIT_FAILURE);
+      }
+
+      uint64_t *d_A;
+      cudaMalloc(&d_A, N * sizeof(uint64_t));
 
       duration = 0.;
       double throughput = 0.;
       cudaStreamSynchronize(stream);
       for(int k = 0; k < nb_test; ++k)
       {
-        t0 = get_elapsedtime();
+        //t0 = get_elapsedtime();
 
+        cudaEventRecord(start, stream);
         for(int i = 0; i < nb_memcpy; ++i)
         {
-          /* printf("Transfer #%d: %d entries\n", i, x); */
-          cudaMemcpyAsync((d_A + i * x), (A + i * x), x * sizeof(double), cudaMemcpyHostToDevice, stream);
+#ifdef DEBUG
+          printf("Transfer #%d: %d entries\n", i, x);
+#endif
+          cudaMemcpyAsync((d_A + i * x), (A + i * x), x * sizeof(uint64_t), cudaMemcpyHostToDevice, stream);
         }
 
         if(((int)N)%x != 0)
         {
-          /* printf("Transfer #%d: %d entries\n", nb_memcpy, ((int)N)%x); */
-          cudaMemcpyAsync((d_A + nb_memcpy * x), (A + nb_memcpy * x), (((int)N)%x) * sizeof(double), cudaMemcpyHostToDevice, stream);
+#ifdef DEBUG
+          printf("Transfer #%d: %d entries\n", nb_memcpy, ((int)N)%x);
+#endif
+          cudaMemcpyAsync((d_A + nb_memcpy * x), (A + nb_memcpy * x), (((int)N)%x) * sizeof(uint64_t), cudaMemcpyHostToDevice, stream);
         }
 
         cudaStreamSynchronize(stream);
+        cudaEventRecord(stop, stream);
+        cudaEventSynchronize(stop);
 
-        t1 = get_elapsedtime();
-        duration += (t1 - t0);
+        float milliseconds = 0;
+        cudaEventElapsedTime(&milliseconds, start, stop);
+
+        duration += (milliseconds/1000);
+        //t1 = get_elapsedtime();
+        //duration += (t1 - t0);
       }
 
       duration /= nb_test;
-      throughput = size_mb / (duration * 1024);
+      throughput = size_in_mbytes / (duration * 1000);
       fprintf(stdout, "Performance results: \n");
       fprintf(stdout, "HostToDevice>  Time: %lf s\n", duration);
-      fprintf(stdout, "HostToDevice>  Throughput: %.2lf Gb/s\n", throughput);
+      fprintf(stdout, "HostToDevice>  Throughput: %.2lf GB/s\n", throughput);
       HtD[coreId * gpucount + deviceId] = duration;
       HtD_gbs[coreId * gpucount + deviceId] = throughput;
+
 
       duration = 0.;
       cudaStreamSynchronize(stream);
       for(int k = 0; k < nb_test; ++k)
       {
-        t0 = get_elapsedtime();
+        cudaEventRecord(start, stream);
 
         for(int i = 0; i < nb_memcpy; ++i)
         {
@@ -199,15 +245,19 @@ int main(int argc, char *argv[])
 
         cudaStreamSynchronize(stream);
 
-        t1 = get_elapsedtime();
+        cudaEventRecord(stop, stream);
+        cudaEventSynchronize(stop);
 
-        duration += (t1 - t0);
+        float milliseconds = 0;
+        cudaEventElapsedTime(&milliseconds, start, stop);
+
+        duration += (milliseconds/1000);
       }
 
       duration /= nb_test;
-      throughput = size_mb / (duration * 1024);
+      throughput = size_in_mbytes / (duration * 1000);
       fprintf(stdout, "DeviceToHost>  Time: %lf s\n", duration);
-      fprintf(stdout, "DeviceToHost>  Throughput: %.2lf Gb/s\n\n", throughput);
+      fprintf(stdout, "DeviceToHost>  Throughput: %.2lf GB/s\n\n", throughput);
       DtH[coreId * gpucount + deviceId] = duration;
       DtH_gbs[coreId * gpucount + deviceId] = throughput;
 
@@ -218,11 +268,13 @@ int main(int argc, char *argv[])
     coreId += 1;
   }
 
+  char buff_explicit_time[100];
+  snprintf(buff_explicit_time, 100, "%lu-MB_numa_implicit-mimic_time.csv", size_in_mbytes);
   FILE * outputFile;
-  outputFile = fopen( "numa_explicit_time.csv", "w+" );
+  outputFile = fopen( buff_explicit_time, "w+" );
   if (outputFile == NULL)
   {
-    printf( "Cannot open file %s\n", "numa_explicit_time.csv" );
+    printf( "Cannot open file %s\n", buff_explicit_time );
     exit(EXIT_FAILURE);
   }
 
@@ -237,10 +289,12 @@ int main(int argc, char *argv[])
 
   fclose(outputFile);
 
-  outputFile = fopen( "numa_explicit_gbs.csv", "w+" );
+  char buff_explicit_gbs[100];
+  snprintf(buff_explicit_gbs, 100, "%lu-MB_numa_implicit-mimic_gbs.csv", size_in_mbytes);
+  outputFile = fopen( buff_explicit_gbs, "w+" );
   if (outputFile == NULL)
   {
-    printf( "Cannot open file %s\n", "numa_explicit_gbs.csv" );
+    printf( "Cannot open file %s\n", buff_explicit_gbs );
     exit(EXIT_FAILURE);
   }
 

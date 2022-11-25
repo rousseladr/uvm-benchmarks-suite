@@ -54,7 +54,8 @@ int main(int argc, char *argv[])
   int gpucount = -1;
   cudaGetDeviceCount(&gpucount);
 
-  double t0 = 0., t1 = 0., duration = 0.;
+  //double t0 = 0., t1 = 0., duration = 0.;
+  double duration = 0.;
   int *tgpu = (int*)malloc(sizeof(int) * numcores * gpucount);
   double *HtD = (double*)malloc(sizeof(double) * numcores * gpucount);
   double *DtH = (double*)malloc(sizeof(double) * numcores * gpucount);
@@ -74,6 +75,7 @@ int main(int argc, char *argv[])
   double size_in_kbytes = size_in_mbytes*1000;
   double size_in_bytes = size_in_kbytes*1000;
 
+#define DEBUG
 #ifdef DEBUG
   printf("Size of array: %lu Bytes\n", (uint64_t)(size_in_bytes));
   printf("Size of array: %.2f KB\n", (double)(size_in_kbytes));
@@ -92,6 +94,7 @@ int main(int argc, char *argv[])
 
 #ifdef DEBUG
   printf("N = %lu\n", N);
+  printf("sizeof(uint64_t) = %lu\n", sizeof(uint64_t));
 #endif
 
   int coreId = 0;
@@ -146,6 +149,10 @@ int main(int argc, char *argv[])
       printf("Set Device to %d\n", deviceId);
       tgpu[coreId * gpucount + deviceId] = deviceId;
 
+      cudaEvent_t start, stop;
+      cudaEventCreate(&start);
+      cudaEventCreate(&stop);
+
       uint64_t *d_A;
       cudaStream_t stream;
 
@@ -162,20 +169,25 @@ int main(int argc, char *argv[])
         }
         cudaDeviceSynchronize();
 
-        t0 = get_elapsedtime();
+        cudaEventRecord(start, stream);
 
         cudaMemPrefetchAsync(d_A, N * sizeof(uint64_t), deviceId, stream);
         cudaStreamSynchronize(stream);
 
-        t1 = get_elapsedtime();
-        duration += (t1 - t0);
+        cudaEventRecord(stop, stream);
+        cudaEventSynchronize(stop);
+
+        float milliseconds = 0;
+        cudaEventElapsedTime(&milliseconds, start, stop);
+
+        duration += (milliseconds/1000);
       }
 
       duration /= nb_test;
       double throughput = size_in_mbytes / (duration * 1000);
       fprintf(stdout, "Performance results: \n");
       fprintf(stdout, "HostToDevice>  Time: %lf s\n", duration);
-      fprintf(stdout, "HostToDevice>  Throughput: %.2lf Gb/s\n", throughput);
+      fprintf(stdout, "HostToDevice>  Throughput: %.2lf GB/s\n", throughput);
       HtD[coreId * gpucount + deviceId] = duration;
       HtD_gbs[coreId * gpucount + deviceId] = throughput;
       cudaFree(d_A);
@@ -197,16 +209,20 @@ int main(int argc, char *argv[])
         init<<<gridSize, blockSize>>>(d_B, 0x0, N);
         cudaDeviceSynchronize();
 
-        t0 = get_elapsedtime();
+        cudaEventRecord(start, stream);
 
         // Second: transfer data from GPU to CPU using prefetch mecanism
         cudaMemPrefetchAsync(d_B, N * sizeof(uint64_t), cudaCpuDeviceId, stream);
         // Wait until completion
         cudaStreamSynchronize(stream);
 
-        t1 = get_elapsedtime();
+        cudaEventRecord(stop, stream);
+        cudaEventSynchronize(stop);
 
-        duration += (t1 - t0);
+        float milliseconds = 0;
+        cudaEventElapsedTime(&milliseconds, start, stop);
+
+        duration += (milliseconds/1000);
       }
 
       cudaFree(d_B);
@@ -215,7 +231,7 @@ int main(int argc, char *argv[])
       duration /= nb_test;
       throughput = size_in_mbytes / (duration * 1000);
       fprintf(stdout, "DeviceToHost>  Time: %lf s\n", duration);
-      fprintf(stdout, "DeviceToHost>  Throughput: %.2lf Gb/s\n\n", throughput);
+      fprintf(stdout, "DeviceToHost>  Throughput: %.2lf GB/s\n\n", throughput);
       DtH[coreId * gpucount + deviceId] = duration;
       DtH_gbs[coreId * gpucount + deviceId] = throughput;
 
