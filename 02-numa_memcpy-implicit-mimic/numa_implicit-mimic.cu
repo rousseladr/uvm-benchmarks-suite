@@ -33,7 +33,7 @@ double get_elapsedtime(void)
 
 int main(int argc, char *argv[])
 {
-  int nb_test = 20;
+  int nb_test = 25;
   int s, j;
   int cpu = -1;
   cpu_set_t cpuset;
@@ -156,7 +156,8 @@ int main(int argc, char *argv[])
       cudaEventCreate(&stop);
 
       uint64_t *A;
-      A = (uint64_t*) mmap(0, N * sizeof(uint64_t), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+      //A = (uint64_t*) mmap(0, N * sizeof(uint64_t), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+      cudaMallocHost(&A, N * sizeof(uint64_t));
 
       for(int i = 0 ; i < N; ++i)
       {
@@ -204,7 +205,6 @@ int main(int argc, char *argv[])
           cudaMemcpyAsync((d_A + nb_memcpy * x), (A + nb_memcpy * x), (((int)N)%x) * sizeof(uint64_t), cudaMemcpyHostToDevice, stream);
         }
 
-        cudaStreamSynchronize(stream);
         cudaEventRecord(stop, stream);
         cudaEventSynchronize(stop);
 
@@ -262,7 +262,8 @@ int main(int argc, char *argv[])
       DtH_gbs[coreId * gpucount + deviceId] = throughput;
 
       cudaFree(d_A);
-      munmap(A, N * sizeof(double));
+      //munmap(A, N * sizeof(double));
+      cudaFreeHost(A);
       //coreId += numcores / numanodes;
     }
     coreId += 1;

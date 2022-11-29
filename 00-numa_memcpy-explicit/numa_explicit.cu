@@ -33,7 +33,7 @@ double get_elapsedtime(void)
 
 int main(int argc, char *argv[])
 {
-  int nb_test = 20;
+  int nb_test = 25;
   int s, j;
   int cpu = -1;
   cpu_set_t cpuset;
@@ -167,9 +167,9 @@ int main(int argc, char *argv[])
 
       duration = 0.;
       double throughput = 0.;
-      cudaDeviceSynchronize();
       for(int k = 0; k < nb_test; ++k)
       {
+        cudaDeviceSynchronize();
         t0 = get_elapsedtime();
 
         cudaMemcpy(d_A, A, N * sizeof(uint64_t), cudaMemcpyHostToDevice);
@@ -177,10 +177,19 @@ int main(int argc, char *argv[])
 
         t1 = get_elapsedtime();
         duration += (t1 - t0);
+
+#ifdef DEBUG
+        get_mempolicy(&allocnumaid, NULL, 0, (void*)A, MPOL_F_NODE | MPOL_F_ADDR);
+        if(allocnumaid != cur_numanode)
+        {
+          printf("FATAL ERROR!!\n");
+          exit(-1);
+        }
+#endif
       }
 
       duration /= nb_test;
-      throughput = size_in_mbytes / (duration * 999);
+      throughput = size_in_mbytes / (duration * 1000);
       fprintf(stdout, "Performance results: \n");
       fprintf(stdout, "HostToDevice>  Time: %lf s\n", duration);
       fprintf(stdout, "HostToDevice>  Throughput: %.2lf GB/s\n", throughput);
@@ -188,16 +197,15 @@ int main(int argc, char *argv[])
       HtD_gbs[coreId * gpucount + deviceId] = throughput;
 
       duration = 0.;
-      cudaDeviceSynchronize();
       for(int k = 0; k < nb_test; ++k)
       {
+        cudaDeviceSynchronize();
         t0 = get_elapsedtime();
 
         cudaMemcpy(A, d_A, N * sizeof(uint64_t), cudaMemcpyDeviceToHost);
         cudaDeviceSynchronize();
 
         t1 = get_elapsedtime();
-
         duration += (t1 - t0);
       }
 

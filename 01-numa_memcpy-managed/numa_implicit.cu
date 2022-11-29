@@ -40,7 +40,7 @@ void init(uint64_t *x, uint64_t val, uint64_t N)
 
 int main(int argc, char *argv[])
 {
-  int nb_test = 20;
+  int nb_test = 25;
   int s, j;
   int cpu = -1;
   cpu_set_t cpuset;
