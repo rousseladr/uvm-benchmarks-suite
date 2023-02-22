@@ -25,9 +25,9 @@ A[x,y] = df["HostToDevice"]
 print(A.min())
 print(A.max())
 
-sns.heatmap(A, vmin=105, vmax=137, center=121, cmap="ocean")
+sns.heatmap(A, vmin=22, vmax=26, center=24, cmap="ocean")
 plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Async. Explicit Transfers")
-plt.suptitle("Host To Device")
+plt.suptitle(sys.argv[1]+"MB - Host To Device")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
 fsave=sys.argv[1]+"-MB_A100_HtD_async-explicit.pdf"
@@ -41,12 +41,12 @@ A[x,y] = df["DeviceToHost"]
 print(A.min())
 print(A.max())
 
-sns.heatmap(A, vmin=51, vmax=119, center=85, cmap="ocean")
+sns.heatmap(A, vmin=22, vmax=26, center=24, cmap="ocean")
 plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Explicit")
-plt.suptitle("Device To Host")
+plt.suptitle(sys.argv[1]+"MB - Device To Host")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
-fsave=sys.argv[1]+"-MB_A100_HtD_async-explicit.pdf"
+fsave=sys.argv[1]+"-MB_A100_DtH_async-explicit.pdf"
 plt.savefig(fsave, format="pdf", bbox_inches="tight")
 
 plt.clf()
