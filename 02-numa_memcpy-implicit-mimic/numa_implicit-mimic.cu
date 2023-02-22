@@ -5,6 +5,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <errno.h>
 #include <unistd.h>
 #include <numa.h>
@@ -36,6 +37,38 @@ int main(int argc, char *argv[])
   int nb_test = 25;
   int s, j;
   int cpu = -1;
+  uint64_t size_in_mbytes = 100;
+  bool verbose = false;
+
+  int opt;
+  while ((opt = getopt(argc, argv, "vhs:")) != -1)
+  {
+    switch (opt)
+    {
+      case 's':
+        size_in_mbytes = (uint64_t)atoi(optarg);
+        break;
+      case 'v':
+        verbose = true;
+        break;
+      case 'h':
+        goto usage;
+        break;
+      default:
+        goto usage;
+    }
+  }
+
+  if (optind != argc)
+  {
+usage:
+    fprintf(stdout, "CUDA Bench - Async. Memory Transfers Throughput evaluation with NUMA consideration 1.0.0\n");
+    fprintf(stdout, "usage: numa_implicit-mimic.exe\n\t[-s size in MB]\n\t[-h print this help]\n");
+    fprintf(stdout, "\nPlot results using python3:\n");
+    fprintf(stdout, "numa_implicit-mimic.exe -s <arg> && python3 plot.py <arg>\n");
+    exit(EXIT_SUCCESS);
+  }
+
   cpu_set_t cpuset;
   pthread_t thread;
 
@@ -60,37 +93,36 @@ int main(int argc, char *argv[])
   memset(HtD_gbs, 0, sizeof(double) * numcores);
   memset(DtH_gbs, 0, sizeof(double) * numcores);
 
-  uint64_t size_in_mbytes = 100;
-  if(argc > 1)
-  {
-    size_in_mbytes = atoi(argv[1]);
-  }
   double size_in_kbytes = size_in_mbytes*1000;
   double size_in_bytes = size_in_kbytes*1000;
 
+  if(verbose)
+  {
 #ifdef DEBUG
-  printf("Size of array: %lu Bytes\n", (uint64_t)(size_in_bytes));
-  printf("Size of array: %.2f KB\n", (double)(size_in_kbytes));
+    fprintf(stdout, "Size of array: %lu Bytes\n", (uint64_t)(size_in_bytes));
+    fprintf(stdout, "Size of array: %.2f KB\n", (double)(size_in_kbytes));
 #endif
-  printf("Size of array: %.2f MB\n", (double)(size_in_mbytes));
+    fprintf(stdout, "Size of array: %.2f MB\n", (double)(size_in_mbytes));
 
 #ifdef DISPLAY_BITS
-  float size_kb = (float)(size_in_kbytes * CHAR_BIT);
-  float size_mb = (float)(size_in_mbytes * CHAR_BIT);
-  printf("Size of array: %lu bits\n", (uint64_t)(size_in_bytes * CHAR_BIT));
-  printf("Size of array: %.2f Kb\n", size_kb);
-  printf("Size of array: %.2f Mb\n", size_mb);
+    float size_kb = (float)(size_in_kbytes * CHAR_BIT);
+    float size_mb = (float)(size_in_mbytes * CHAR_BIT);
+    fprintf(stdout, "Size of array: %lu bits\n", (uint64_t)(size_in_bytes * CHAR_BIT));
+    fprintf(stdout, "Size of array: %.2f Kb\n", size_kb);
+    fprintf(stdout, "Size of array: %.2f Mb\n", size_mb);
 #endif
+  }
 
   uint64_t N = (size_in_bytes + sizeof(uint64_t) - 1) / sizeof(uint64_t);
-
-  printf("Table size: %lu bytes\n", (uint64_t)(size_in_bytes));
-
   long int page_size = 2 * 1000 * 1000;
-  printf("Page size: %ld bytes\n", page_size);
-
   long int x = page_size / sizeof(uint64_t);
-  printf("Nb \'uint64_t\' per page: %ld entries\n", x);
+
+  if(verbose)
+  {
+    fprintf(stdout, "Table size: %lu bytes\n", (uint64_t)(size_in_bytes));
+    fprintf(stdout, "Page size: %ld bytes\n", page_size);
+    fprintf(stdout, "Nb \'uint64_t\' per page: %ld entries\n", x);
+  }
 
   long int nb_memcpy = N / x;
 
@@ -104,7 +136,10 @@ int main(int argc, char *argv[])
       exit(EXIT_FAILURE);
     }
 
-    printf("Target core %d\n", coreId);
+    if(verbose)
+    {
+      fprintf(stdout, "Target core %d\n", coreId);
+    }
     /* Set affinity mask to include CPUs coreId */
 
     CPU_ZERO(&cpuset);
@@ -136,8 +171,11 @@ int main(int argc, char *argv[])
     }
 
     int cur_numanode = numa_node_of_cpu(cpu);
-    printf("Running on CPU %d of %d\n", cpu, numcores);
-    printf("Running on NUMA %d of %d\n", cur_numanode, numanodes);
+    if(verbose)
+    {
+      fprintf(stdout, "Running on CPU %d of %d\n", cpu, numcores);
+      fprintf(stdout, "Running on NUMA %d of %d\n", cur_numanode, numanodes);
+    }
 
     //int deviceId = (cur_numanode/2)%gpucount;
     //int deviceId = coreId%gpucount;
@@ -145,7 +183,10 @@ int main(int argc, char *argv[])
     for(int deviceId = 0; deviceId < gpucount; ++deviceId)
     {
       cudaSetDevice(deviceId);
-      printf("Set Device to %d\n", deviceId);
+      if(verbose)
+      {
+        fprintf(stdout, "Set Device to %d\n", deviceId);
+      }
       tgpu[coreId * gpucount + deviceId] = deviceId;
 
       cudaStream_t stream;
@@ -218,9 +259,12 @@ int main(int argc, char *argv[])
 
       duration /= nb_test;
       throughput = size_in_mbytes / (duration * 1000);
-      fprintf(stdout, "Performance results: \n");
-      fprintf(stdout, "HostToDevice>  Time: %lf s\n", duration);
-      fprintf(stdout, "HostToDevice>  Throughput: %.2lf GB/s\n", throughput);
+      if(verbose)
+      {
+        fprintf(stdout, "Performance results: \n");
+        fprintf(stdout, "HostToDevice>  Time: %lf s\n", duration);
+        fprintf(stdout, "HostToDevice>  Throughput: %.2lf GB/s\n", throughput);
+      }
       HtD[coreId * gpucount + deviceId] = duration;
       HtD_gbs[coreId * gpucount + deviceId] = throughput;
 
@@ -256,8 +300,11 @@ int main(int argc, char *argv[])
 
       duration /= nb_test;
       throughput = size_in_mbytes / (duration * 1000);
-      fprintf(stdout, "DeviceToHost>  Time: %lf s\n", duration);
-      fprintf(stdout, "DeviceToHost>  Throughput: %.2lf GB/s\n\n", throughput);
+      if(verbose)
+      {
+        fprintf(stdout, "DeviceToHost>  Time: %lf s\n", duration);
+        fprintf(stdout, "DeviceToHost>  Throughput: %.2lf GB/s\n\n", throughput);
+      }
       DtH[coreId * gpucount + deviceId] = duration;
       DtH_gbs[coreId * gpucount + deviceId] = throughput;
 
@@ -309,6 +356,9 @@ int main(int argc, char *argv[])
   }
 
   fclose(outputFile);
+
+  fprintf(stdout, "Results saved in:\n\tGB/s: %s\n", buff_explicit_gbs);
+  fprintf(stdout, "\tTime: %s\n", buff_explicit_time);
 
   free(tgpu);
   free(HtD);
