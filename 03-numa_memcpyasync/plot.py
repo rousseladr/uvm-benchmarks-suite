@@ -51,7 +51,6 @@ plt.savefig(fsave, format="pdf", bbox_inches="tight")
 
 plt.clf()
 
-
 sns.heatmap(B, vmin=min2, vmax=max2, center=med, cmap="ocean")
 plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Asynchronous Explicit")
 plt.suptitle(sys.argv[1]+"MB - Device To Host")

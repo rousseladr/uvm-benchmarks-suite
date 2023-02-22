@@ -22,31 +22,41 @@ x = df["core"]
 A = np.zeros((x.max()+1,y.max()+1))
 A[x,y] = df["HostToDevice"]
 
-print(A.min())
-print(A.max())
+B = np.zeros((x.max()+1,y.max()+1))
+B[x,y] = df["DeviceToHost"]
 
-sns.heatmap(A, vmin=22, vmax=26, center=24, cmap="ocean")
+min2=A.min()
+if B.min() <= min2:
+    min2 = B.min()
+min2 = min2-1
+
+max2=A.max()
+if B.max() >= max2:
+    max2 = B.max()
+max2 = max2+1
+
+med = (max2 + min2) / 2
+
+print(min2)
+print(max2)
+print(med)
+
+sns.heatmap(A, vmin=min2, vmax=max2, center=med, cmap="ocean")
 plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Async. Explicit Transfers")
 plt.suptitle(sys.argv[1]+"MB - Host To Device")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
-fsave=sys.argv[1]+"-MB_A100_HtD_async-explicit.pdf"
+fsave=sys.argv[1]+"-MB_A100_HtD_implicit-mimic.pdf"
 plt.savefig(fsave, format="pdf", bbox_inches="tight")
 
 plt.clf()
 
-A = np.zeros((x.max()+1,y.max()+1))
-A[x,y] = df["DeviceToHost"]
-
-print(A.min())
-print(A.max())
-
-sns.heatmap(A, vmin=22, vmax=26, center=24, cmap="ocean")
+sns.heatmap(B, vmin=min2, vmax=max2, center=med, cmap="ocean")
 plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Explicit")
 plt.suptitle(sys.argv[1]+"MB - Device To Host")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
-fsave=sys.argv[1]+"-MB_A100_DtH_async-explicit.pdf"
+fsave=sys.argv[1]+"-MB_A100_DtH_implicit-mimic.pdf"
 plt.savefig(fsave, format="pdf", bbox_inches="tight")
 
 plt.clf()
