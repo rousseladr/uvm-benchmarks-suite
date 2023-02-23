@@ -1,6 +1,11 @@
 #!/bin/bash
 
-SRC_DIR="/ccc/dsku/nfs-server/user/cont001/ocre/roussela/work/Projects/bench/uvm-benchmarks-suite"
+SRC_DIR="$CCCWORKDIR/Projects/bench/uvm-benchmarks-suite"
+if ! test -d $SRC_DIR ; then
+  echo "Invalid Source directory given: $SRC_DIR"
+  exit
+fi
+
 RESULT_DIR="$SRC_DIR/results/$SLURM_JOB_PARTITION"
 
 cd $SRC_DIR/00-numa_memcpy-explicit
