@@ -51,22 +51,31 @@ A3[x3,y3] = df3["HostToDevice"]
 B3 = np.zeros((x3.max()+1,y3.max()+1))
 B3[x3,y3] = df3["DeviceToHost"]
 
-minall = np.array([A0.min(), A1.min(), A2.min(), A3.min(), B0.min(), B1.min(), B2.min(), B3.min()])
-maxall = np.array([A0.max(), A1.max(), A2.max(), A3.max(), B0.max(), B1.max(), B2.max(), B3.max()])
+minallA = np.array([A0.min(), A1.min(), A2.min(), A3.min()])
+maxallA = np.array([A0.max(), A1.max(), A2.max(), A3.max()])
 
-#  print(minall)
-print(minall.min())
-#  print(maxall)
-print(maxall.max())
+minallB = np.array([B0.min(), B1.min(), B2.min(), B3.min()])
+maxallB = np.array([B0.max(), B1.max(), B2.max(), B3.max()])
 
-ming = minall.min()
-maxg = maxall.max()
-med = (maxg+ming)/2
-print(med)
+minag = minallA.min()
+maxag = maxallA.max()
+meda = (maxag+minag)/2
+
+minbg = minallB.min()
+maxbg = maxallB.max()
+medb = (maxbg+minbg)/2
+
+print(maxallA.max())
+print(minallA.min())
+print(meda)
+
+print(minallB.min())
+print(maxallB.max())
+print(medb)
 
 res_dir=sys.argv[1]+"/"+sys.argv[2]+"MB/pdf/"
 
-sns.heatmap(A0, vmin=ming, vmax=maxg, center=med, cmap="ocean")
+sns.heatmap(A0, vmin=minag, vmax=maxag, center=meda, cmap="ocean")
 plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Explicit")
 plt.suptitle(sys.argv[2]+"MB - Host To Device")
 plt.xlabel('GPU Number')
@@ -76,7 +85,7 @@ plt.savefig(fsave, format="pdf", bbox_inches="tight")
 
 plt.clf()
 
-sns.heatmap(B0, vmin=ming, vmax=maxg, center=med, cmap="ocean")
+sns.heatmap(B0, vmin=minbg, vmax=maxbg, center=medb, cmap="ocean")
 plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Explicit")
 plt.suptitle(sys.argv[2]+"MB - Device To Host")
 plt.xlabel('GPU Number')
@@ -86,7 +95,7 @@ plt.savefig(fsave, format="pdf", bbox_inches="tight")
 
 plt.clf()
 
-sns.heatmap(A1, vmin=ming, vmax=maxg, center=med, cmap="ocean")
+sns.heatmap(A1, vmin=minag, vmax=maxag, center=meda, cmap="ocean")
 plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Explicit")
 plt.suptitle(sys.argv[2]+"MB - Host To Device")
 plt.xlabel('GPU Number')
@@ -96,7 +105,7 @@ plt.savefig(fsave, format="pdf", bbox_inches="tight")
 
 plt.clf()
 
-sns.heatmap(B1, vmin=ming, vmax=maxg, center=med, cmap="ocean")
+sns.heatmap(B1, vmin=minbg, vmax=maxbg, center=medb, cmap="ocean")
 plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Explicit")
 plt.suptitle(sys.argv[2]+"MB - Device To Host")
 plt.xlabel('GPU Number')
@@ -106,7 +115,7 @@ plt.savefig(fsave, format="pdf", bbox_inches="tight")
 
 plt.clf()
 
-sns.heatmap(A2, vmin=ming, vmax=maxg, center=med, cmap="ocean")
+sns.heatmap(A2, vmin=minag, vmax=maxag, center=meda, cmap="ocean")
 plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Explicit")
 plt.suptitle(sys.argv[2]+"MB - Host To Device")
 plt.xlabel('GPU Number')
@@ -116,7 +125,7 @@ plt.savefig(fsave, format="pdf", bbox_inches="tight")
 
 plt.clf()
 
-sns.heatmap(B2, vmin=ming, vmax=maxg, center=med, cmap="ocean")
+sns.heatmap(B3, vmin=minbg, vmax=maxbg, center=medb, cmap="ocean")
 plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Explicit")
 plt.suptitle(sys.argv[2]+"MB - Device To Host")
 plt.xlabel('GPU Number')
@@ -126,7 +135,7 @@ plt.savefig(fsave, format="pdf", bbox_inches="tight")
 
 plt.clf()
 
-sns.heatmap(A3, vmin=ming, vmax=maxg, center=med, cmap="ocean")
+sns.heatmap(A3, vmin=minag, vmax=maxag, center=meda, cmap="ocean")
 plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Explicit")
 plt.suptitle(sys.argv[2]+"MB - Host To Device")
 plt.xlabel('GPU Number')
@@ -136,7 +145,7 @@ plt.savefig(fsave, format="pdf", bbox_inches="tight")
 
 plt.clf()
 
-sns.heatmap(B3, vmin=ming, vmax=maxg, center=med, cmap="ocean")
+sns.heatmap(B3, vmin=minbg, vmax=maxbg, center=medb, cmap="ocean")
 plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Explicit")
 plt.suptitle(sys.argv[2]+"MB - Device To Host")
 plt.xlabel('GPU Number')
