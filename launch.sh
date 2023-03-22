@@ -1,6 +1,8 @@
 #!/bin/bash
 
-SRC_DIR="$CCCWORKDIR/Projects/bench/uvm-benchmarks-suite"
+SCRIPT=$(readlink -f $0)
+SRC_DIR=$(dirname  $SCRIPT)
+
 if ! test -d $SRC_DIR ; then
   echo "Invalid Source directory given: $SRC_DIR"
   exit
