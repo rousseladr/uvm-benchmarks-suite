@@ -76,81 +76,81 @@ print(medb)
 res_dir=sys.argv[1]+"/"+sys.argv[2]+"MB/pdf/"
 
 sns.heatmap(A0, vmin=minag, vmax=maxag, center=meda, cmap="ocean")
-plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Explicit")
+plt.title("Throughput (GB/s) of cudaMemcpy on "+sys.argv[1]+" - Explicit")
 plt.suptitle(sys.argv[2]+"MB - Host To Device")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
-fsave=res_dir+sys.argv[2]+"-MB_A100_HtD_explicit.pdf"
+fsave=res_dir+sys.argv[2]+"-MB_"+sys.argv[1]+"_HtD_explicit.pdf"
 plt.savefig(fsave, format="pdf", bbox_inches="tight")
 
 plt.clf()
 
 sns.heatmap(B0, vmin=minbg, vmax=maxbg, center=medb, cmap="ocean")
-plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Explicit")
+plt.title("Throughput (GB/s) of cudaMemcpy on "+sys.argv[1]+" - Explicit")
 plt.suptitle(sys.argv[2]+"MB - Device To Host")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
-fsave=res_dir+sys.argv[2]+"-MB_A100_DtH_explicit.pdf"
+fsave=res_dir+sys.argv[2]+"-MB_"+sys.argv[1]+"_DtH_explicit.pdf"
 plt.savefig(fsave, format="pdf", bbox_inches="tight")
 
 plt.clf()
 
 sns.heatmap(A1, vmin=minag, vmax=maxag, center=meda, cmap="ocean")
-plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Implicit")
+plt.title("Throughput (GB/s) of cudaMemcpy on "+sys.argv[1]+" - Implicit")
 plt.suptitle(sys.argv[2]+"MB - Host To Device")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
-fsave=res_dir+sys.argv[2]+"-MB_A100_HtD_managed.pdf"
+fsave=res_dir+sys.argv[2]+"-MB_"+sys.argv[1]+"_HtD_managed.pdf"
 plt.savefig(fsave, format="pdf", bbox_inches="tight")
 
 plt.clf()
 
 sns.heatmap(B1, vmin=minbg, vmax=maxbg, center=medb, cmap="ocean")
-plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Implicit")
+plt.title("Throughput (GB/s) of cudaMemcpy on "+sys.argv[1]+" - Implicit")
 plt.suptitle(sys.argv[2]+"MB - Device To Host")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
-fsave=res_dir+sys.argv[2]+"-MB_A100_DtH_managed.pdf"
+fsave=res_dir+sys.argv[2]+"-MB_"+sys.argv[1]+"_DtH_managed.pdf"
 plt.savefig(fsave, format="pdf", bbox_inches="tight")
 
 plt.clf()
 
 sns.heatmap(A2, vmin=minag, vmax=maxag, center=meda, cmap="ocean")
-plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Implicit mimic")
+plt.title("Throughput (GB/s) of cudaMemcpy on "+sys.argv[1]+" - Implicit mimic")
 plt.suptitle(sys.argv[2]+"MB - Host To Device")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
-fsave=res_dir+sys.argv[2]+"-MB_A100_HtD_implicit-mimic.pdf"
+fsave=res_dir+sys.argv[2]+"-MB_"+sys.argv[1]+"_HtD_implicit-mimic.pdf"
 plt.savefig(fsave, format="pdf", bbox_inches="tight")
 
 plt.clf()
 
 sns.heatmap(B3, vmin=minbg, vmax=maxbg, center=medb, cmap="ocean")
-plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Implicit mimic")
+plt.title("Throughput (GB/s) of cudaMemcpy on "+sys.argv[1]+" - Implicit mimic")
 plt.suptitle(sys.argv[2]+"MB - Device To Host")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
-fsave=res_dir+sys.argv[2]+"-MB_A100_DtH_implicit-mimic.pdf"
+fsave=res_dir+sys.argv[2]+"-MB_"+sys.argv[1]+"_DtH_implicit-mimic.pdf"
 plt.savefig(fsave, format="pdf", bbox_inches="tight")
 
 plt.clf()
 
 sns.heatmap(A3, vmin=minag, vmax=maxag, center=meda, cmap="ocean")
-plt.title("Throughput (GB/s) of cudaMemcpyAsync on A100 - Explicit")
+plt.title("Throughput (GB/s) of cudaMemcpyAsync on "+sys.argv[1]+" - Explicit")
 plt.suptitle(sys.argv[2]+"MB - Host To Device")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
-fsave=res_dir+sys.argv[2]+"-MB_A100_HtD_async-explicit.pdf"
+fsave=res_dir+sys.argv[2]+"-MB_"+sys.argv[1]+"_HtD_async-explicit.pdf"
 plt.savefig(fsave, format="pdf", bbox_inches="tight")
 
 plt.clf()
 
 sns.heatmap(B3, vmin=minbg, vmax=maxbg, center=medb, cmap="ocean")
-plt.title("Throughput (GB/s) of cudaMemcpyAsync on A100 - Explicit")
+plt.title("Throughput (GB/s) of cudaMemcpyAsync on "+sys.argv[1]+" - Explicit")
 plt.suptitle(sys.argv[2]+"MB - Device To Host")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
-fsave=res_dir+sys.argv[2]+"-MB_A100_DtH_async-explicit.pdf"
+fsave=res_dir+sys.argv[2]+"-MB_"+sys.argv[1]+"_DtH_async-explicit.pdf"
 plt.savefig(fsave, format="pdf", bbox_inches="tight")
 
 plt.clf()
