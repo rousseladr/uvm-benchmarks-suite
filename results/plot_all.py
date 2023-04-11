@@ -13,8 +13,8 @@ if len(sys.argv) <= 2:
     print("Usage:\n\t python3 plot.py <SYSTEM ID> <SIZE-IN-MB>")
     sys.exit(0)
 
-f0=sys.argv[1]+"/"+sys.argv[2]+"MB/csv/"+sys.argv[2]+"-MB_numa_implicit_gbs.csv"
-f1=sys.argv[1]+"/"+sys.argv[2]+"MB/csv/"+sys.argv[2]+"-MB_numa_explicit_gbs.csv"
+f0=sys.argv[1]+"/"+sys.argv[2]+"MB/csv/"+sys.argv[2]+"-MB_numa_explicit_gbs.csv"
+f1=sys.argv[1]+"/"+sys.argv[2]+"MB/csv/"+sys.argv[2]+"-MB_numa_implicit_gbs.csv"
 f2=sys.argv[1]+"/"+sys.argv[2]+"MB/csv/"+sys.argv[2]+"-MB_numa_implicit-mimic_gbs.csv"
 f3=sys.argv[1]+"/"+sys.argv[2]+"MB/csv/"+sys.argv[2]+"-MB_numa_memcpyasync_gbs.csv"
 
@@ -96,7 +96,7 @@ plt.savefig(fsave, format="pdf", bbox_inches="tight")
 plt.clf()
 
 sns.heatmap(A1, vmin=minag, vmax=maxag, center=meda, cmap="ocean")
-plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Explicit")
+plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Implicit")
 plt.suptitle(sys.argv[2]+"MB - Host To Device")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
@@ -106,7 +106,7 @@ plt.savefig(fsave, format="pdf", bbox_inches="tight")
 plt.clf()
 
 sns.heatmap(B1, vmin=minbg, vmax=maxbg, center=medb, cmap="ocean")
-plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Explicit")
+plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Implicit")
 plt.suptitle(sys.argv[2]+"MB - Device To Host")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
@@ -116,7 +116,7 @@ plt.savefig(fsave, format="pdf", bbox_inches="tight")
 plt.clf()
 
 sns.heatmap(A2, vmin=minag, vmax=maxag, center=meda, cmap="ocean")
-plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Explicit")
+plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Implicit mimic")
 plt.suptitle(sys.argv[2]+"MB - Host To Device")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
@@ -126,7 +126,7 @@ plt.savefig(fsave, format="pdf", bbox_inches="tight")
 plt.clf()
 
 sns.heatmap(B3, vmin=minbg, vmax=maxbg, center=medb, cmap="ocean")
-plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Explicit")
+plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Implicit mimic")
 plt.suptitle(sys.argv[2]+"MB - Device To Host")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
@@ -136,7 +136,7 @@ plt.savefig(fsave, format="pdf", bbox_inches="tight")
 plt.clf()
 
 sns.heatmap(A3, vmin=minag, vmax=maxag, center=meda, cmap="ocean")
-plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Explicit")
+plt.title("Throughput (GB/s) of cudaMemcpyAsync on A100 - Explicit")
 plt.suptitle(sys.argv[2]+"MB - Host To Device")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
@@ -146,7 +146,7 @@ plt.savefig(fsave, format="pdf", bbox_inches="tight")
 plt.clf()
 
 sns.heatmap(B3, vmin=minbg, vmax=maxbg, center=medb, cmap="ocean")
-plt.title("Throughput (GB/s) of cudaMemcpy on A100 - Explicit")
+plt.title("Throughput (GB/s) of cudaMemcpyAsync on A100 - Explicit")
 plt.suptitle(sys.argv[2]+"MB - Device To Host")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
