@@ -79,7 +79,7 @@ usage:
   int gpucount = -1;
   cudaGetDeviceCount(&gpucount);
 
-  double t0 = 0., t1 = 0., duration = 0.;
+  double duration = 0.;
   int *tgpu = (int*)malloc(sizeof(int) * numcores * gpucount);
   double *HtD = (double*)malloc(sizeof(double) * numcores * gpucount);
   double *DtH = (double*)malloc(sizeof(double) * numcores * gpucount);
@@ -207,19 +207,28 @@ usage:
       uint64_t *d_A;
       cudaMalloc(&d_A, N * sizeof(uint64_t));
 
+      cudaEvent_t start, stop;
+      cudaEventCreate(&start);
+      cudaEventCreate(&stop);
+
       duration = 0.;
       double throughput = 0.;
+
+      cudaDeviceSynchronize();
       for(int k = 0; k < nb_test; ++k)
       {
-        cudaDeviceSynchronize();
-        t0 = get_elapsedtime();
 
-        cudaMemcpy(d_A, A, N * sizeof(uint64_t), cudaMemcpyHostToDevice);
-        cudaDeviceSynchronize();
+        cudaEventRecord(start, 0);
+        cudaMemcpyAsync(d_A, A, N * sizeof(uint64_t), cudaMemcpyHostToDevice, 0);
+        //cudaStreamSynchronize(0);
 
-        t1 = get_elapsedtime();
-        duration += (t1 - t0);
+        cudaEventRecord(stop, 0);
+        cudaEventSynchronize(stop);
 
+        float milliseconds = 0;
+        cudaEventElapsedTime(&milliseconds, start, stop);
+
+        duration += (milliseconds/1000);
 #ifdef DEBUG
         get_mempolicy(&allocnumaid, NULL, 0, (void*)A, MPOL_F_NODE | MPOL_F_ADDR);
         if(allocnumaid != cur_numanode)
@@ -229,8 +238,8 @@ usage:
         }
 #endif
       }
-
       duration /= nb_test;
+
       throughput = size_in_mbytes / (duration * 1000);
       if(verbose)
       {
@@ -242,18 +251,22 @@ usage:
       HtD_gbs[coreId * gpucount + deviceId] = throughput;
 
       duration = 0.;
+      cudaDeviceSynchronize();
       for(int k = 0; k < nb_test; ++k)
       {
-        cudaDeviceSynchronize();
-        t0 = get_elapsedtime();
 
-        cudaMemcpy(A, d_A, N * sizeof(uint64_t), cudaMemcpyDeviceToHost);
-        cudaDeviceSynchronize();
+        cudaEventRecord(start, 0);
+        cudaMemcpyAsync(A, d_A, N * sizeof(uint64_t), cudaMemcpyDeviceToHost, 0);
+        //cudaStreamSynchronize(0);
 
-        t1 = get_elapsedtime();
-        duration += (t1 - t0);
+        cudaEventRecord(stop, 0);
+        cudaEventSynchronize(stop);
+
+        float milliseconds = 0;
+        cudaEventElapsedTime(&milliseconds, start, stop);
+
+        duration += (milliseconds/1000);
       }
-
       duration /= nb_test;
       throughput = size_in_mbytes / (duration * 1000);
       if(verbose)

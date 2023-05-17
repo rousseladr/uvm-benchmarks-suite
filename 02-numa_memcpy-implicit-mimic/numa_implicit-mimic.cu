@@ -224,11 +224,12 @@ usage:
 
       duration = 0.;
       double throughput = 0.;
-      cudaStreamSynchronize(stream);
+      cudaDeviceSynchronize();
       for(int k = 0; k < nb_test; ++k)
       {
         //t0 = get_elapsedtime();
 
+        cudaStreamSynchronize(stream);
         cudaEventRecord(start, stream);
         for(int i = 0; i < nb_memcpy; ++i)
         {
@@ -270,9 +271,10 @@ usage:
 
 
       duration = 0.;
-      cudaStreamSynchronize(stream);
+      cudaDeviceSynchronize();
       for(int k = 0; k < nb_test; ++k)
       {
+        cudaStreamSynchronize(stream);
         cudaEventRecord(start, stream);
 
         for(int i = 0; i < nb_memcpy; ++i)

@@ -215,7 +215,7 @@ usage:
         cudaEventRecord(start, stream);
 
         cudaMemPrefetchAsync(d_A, N * sizeof(uint64_t), deviceId, stream);
-        cudaStreamSynchronize(stream);
+        //cudaStreamSynchronize(stream);
 
         cudaEventRecord(stop, stream);
         cudaEventSynchronize(stop);
@@ -260,7 +260,7 @@ usage:
         // Second: transfer data from GPU to CPU using prefetch mecanism
         cudaMemPrefetchAsync(d_B, N * sizeof(uint64_t), cudaCpuDeviceId, stream);
         // Wait until completion
-        cudaStreamSynchronize(stream);
+        //cudaStreamSynchronize(stream);
 
         cudaEventRecord(stop, stream);
         cudaEventSynchronize(stop);

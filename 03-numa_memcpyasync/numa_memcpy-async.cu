@@ -215,6 +215,7 @@ usage:
 
       duration = 0.;
       double throughput = 0.;
+      cudaDeviceSynchronize();
       for(int k = 0; k < nb_test; ++k)
       {
         cudaStreamSynchronize(stream);
