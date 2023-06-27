@@ -76,12 +76,13 @@ usage:
     exit(EXIT_SUCCESS);
   }
 
+  nb_test++;
   cpu_set_t cpuset;
   pthread_t thread;
 
   thread = pthread_self();
 
-  int numcores = sysconf(_SC_NPROCESSORS_ONLN) / 2; // divided by 2 because of hyperthreading
+  int numcores = sysconf(_SC_NPROCESSORS_ONLN);
   int numanodes = numa_num_configured_nodes();
 
   int gpucount = -1;
@@ -192,10 +193,6 @@ usage:
       }
       tgpu[coreId * gpucount + deviceId] = deviceId;
 
-      cudaEvent_t start, stop;
-      cudaEventCreate(&start);
-      cudaEventCreate(&stop);
-
       uint64_t *d_A;
       cudaStream_t stream;
 
@@ -203,6 +200,7 @@ usage:
       cudaMemAdvise(d_A, N * sizeof(uint64_t), cudaMemAdviseSetPreferredLocation, cudaCpuDeviceId);
       cudaStreamCreate(&stream);
 
+      double t0 = 0., t1 = 0.;
       duration = 0.;
       for(int k = 0; k < nb_test; ++k)
       {
@@ -212,18 +210,14 @@ usage:
         }
         cudaDeviceSynchronize();
 
-        cudaEventRecord(start, stream);
-
+	t0 = get_elapsedtime();
         cudaMemPrefetchAsync(d_A, N * sizeof(uint64_t), deviceId, stream);
-        //cudaStreamSynchronize(stream);
+        cudaStreamSynchronize(stream);
+	t1 = get_elapsedtime();
 
-        cudaEventRecord(stop, stream);
-        cudaEventSynchronize(stop);
-
-        float milliseconds = 0;
-        cudaEventElapsedTime(&milliseconds, start, stop);
-
-        duration += (milliseconds/1000);
+	if(k == 0) { continue; }
+	fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", coreId, deviceId, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
+        duration += (t1 - t0);
       }
 
       duration /= nb_test;
@@ -248,27 +242,22 @@ usage:
       int nbBlocks = (N + 32 - 1) / 32;
       dim3 gridSize(nbBlocks, 1, 1);
 
-      duration = 0.;
+      t0 = 0.; t1 = 0.; duration = 0.;
       for(int k = 0; k < nb_test; ++k)
       {
         // First: push data on GPU
         init<<<gridSize, blockSize>>>(d_B, 0x0, N);
         cudaDeviceSynchronize();
 
-        cudaEventRecord(start, stream);
-
+        t0 = get_elapsedtime(); 
         // Second: transfer data from GPU to CPU using prefetch mecanism
         cudaMemPrefetchAsync(d_B, N * sizeof(uint64_t), cudaCpuDeviceId, stream);
         // Wait until completion
-        //cudaStreamSynchronize(stream);
+        cudaStreamSynchronize(stream);
+	t1 = get_elapsedtime();
 
-        cudaEventRecord(stop, stream);
-        cudaEventSynchronize(stop);
-
-        float milliseconds = 0;
-        cudaEventElapsedTime(&milliseconds, start, stop);
-
-        duration += (milliseconds/1000);
+	if(k == 0) { continue; }
+        duration += (t1 - t0);
       }
 
       cudaFree(d_B);
@@ -285,7 +274,12 @@ usage:
       DtH_gbs[coreId * gpucount + deviceId] = throughput;
 
     }
-    coreId += 1;
+    coreId += 72;
+    if(coreId == 72)
+    {
+      continue;
+    }
+    coreId++;
   }
 
   char buff_implicit_time[100];

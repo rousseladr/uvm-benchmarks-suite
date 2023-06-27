@@ -68,13 +68,14 @@ usage:
     fprintf(stdout, "numa_implicit-mimic.exe -s <arg> && python3 plot.py <arg>\n");
     exit(EXIT_SUCCESS);
   }
+  nb_test+=1;
 
   cpu_set_t cpuset;
   pthread_t thread;
 
   thread = pthread_self();
 
-  int numcores = sysconf(_SC_NPROCESSORS_ONLN) / 2; // divided by 2 because of hyperthreading
+  int numcores = sysconf(_SC_NPROCESSORS_ONLN); // divided by 2 because of hyperthreading
   int numanodes = numa_num_configured_nodes();
 
   int gpucount = -1;
@@ -192,10 +193,6 @@ usage:
       cudaStream_t stream;
       cudaStreamCreate(&stream);
 
-      cudaEvent_t start, stop;
-      cudaEventCreate(&start);
-      cudaEventCreate(&stop);
-
       uint64_t *A;
       //A = (uint64_t*) mmap(0, N * sizeof(uint64_t), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
       cudaMallocHost(&A, N * sizeof(uint64_t));
@@ -222,6 +219,8 @@ usage:
       uint64_t *d_A;
       cudaMalloc(&d_A, N * sizeof(uint64_t));
 
+      double t0 = 0.;
+      double t1 = 0.;
       duration = 0.;
       double throughput = 0.;
       cudaDeviceSynchronize();
@@ -230,7 +229,7 @@ usage:
         //t0 = get_elapsedtime();
 
         cudaStreamSynchronize(stream);
-        cudaEventRecord(start, stream);
+	t0 = get_elapsedtime();
         for(int i = 0; i < nb_memcpy; ++i)
         {
 #ifdef DEBUG
@@ -247,18 +246,15 @@ usage:
           cudaMemcpyAsync((d_A + nb_memcpy * x), (A + nb_memcpy * x), (((int)N)%x) * sizeof(uint64_t), cudaMemcpyHostToDevice, stream);
         }
 
-        cudaEventRecord(stop, stream);
-        cudaEventSynchronize(stop);
+        cudaStreamSynchronize(stream);
+	t1 = get_elapsedtime();
 
-        float milliseconds = 0;
-        cudaEventElapsedTime(&milliseconds, start, stop);
+	if(k == 0) { continue; }
 
-        duration += (milliseconds/1000);
-        //t1 = get_elapsedtime();
-        //duration += (t1 - t0);
+        duration += (t1 - t0);
       }
 
-      duration /= nb_test;
+      duration /= nb_test-1;
       throughput = size_in_mbytes / (duration * 1000);
       if(verbose)
       {
@@ -270,12 +266,14 @@ usage:
       HtD_gbs[coreId * gpucount + deviceId] = throughput;
 
 
+      t0 = 0.;
+      t1 = 0.;
       duration = 0.;
       cudaDeviceSynchronize();
       for(int k = 0; k < nb_test; ++k)
       {
         cudaStreamSynchronize(stream);
-        cudaEventRecord(start, stream);
+	t0 = get_elapsedtime();
 
         for(int i = 0; i < nb_memcpy; ++i)
         {
@@ -290,17 +288,14 @@ usage:
         }
 
         cudaStreamSynchronize(stream);
+	t1 = get_elapsedtime();
 
-        cudaEventRecord(stop, stream);
-        cudaEventSynchronize(stop);
+	if(k == 0) { continue; }
 
-        float milliseconds = 0;
-        cudaEventElapsedTime(&milliseconds, start, stop);
-
-        duration += (milliseconds/1000);
+        duration += (t1 - t0);
       }
 
-      duration /= nb_test;
+      duration /= nb_test-1;
       throughput = size_in_mbytes / (duration * 1000);
       if(verbose)
       {
@@ -315,6 +310,8 @@ usage:
       cudaFreeHost(A);
       //coreId += numcores / numanodes;
     }
+    if(coreId == 0)
+    { continue; }
     coreId += 1;
   }
 

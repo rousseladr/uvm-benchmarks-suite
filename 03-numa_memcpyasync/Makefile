@@ -1,6 +1,8 @@
 CC=nvcc
 CFLAGS=-O3
+CFLAGS+=`pkg-config --cflags numa`
 LDFLAGS=-lpthread -lnuma
+LDFLAGS+=`pkg-config --libs numa`
 
 EXE=numa_memcpy-async.exe
 

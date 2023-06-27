@@ -22,11 +22,14 @@ make clean all
 cd $SRC_DIR/03-numa_memcpyasync/
 make clean all
 
+cd $SRC_DIR/04-numa_hostRegister/
+make clean all
+
 mkdir -p $RESULT_DIR
 cd $RESULT_DIR
 
 # for i in 1 5 10 50 100 250 500 1000 2500 5000
-for i in 1 5 10 50 100
+for i in 5 10 50 100
 do
   TEST_DIR="$RESULT_DIR/$i"
   TEST_DIR+="MB"
@@ -39,8 +42,9 @@ do
   $SRC_DIR/01-numa_memcpy-managed/numa_implicit.exe -s $i
   $SRC_DIR/02-numa_memcpy-implicit-mimic/numa_implicit-mimic.exe -s $i
   $SRC_DIR/03-numa_memcpyasync/numa_memcpy-async.exe -s $i
+  $SRC_DIR/04-numa_hostRegister/numa_hostregister.exe -s $i
 
-  res_dir="$SRC_DIR/results"
-  cd $res_dir
-  python3 plot_all.py $SLURM_JOB_PARTITION $i
+  #res_dir="$SRC_DIR/results"
+  #cd $res_dir
+  #python3 plot_all.py $SLURM_JOB_PARTITION $i
 done

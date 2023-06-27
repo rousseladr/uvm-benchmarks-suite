@@ -4,14 +4,14 @@ CFLAGS+=`pkg-config --cflags numa`
 LDFLAGS=-lpthread -lnuma
 LDFLAGS+=`pkg-config --libs numa`
 
-EXE=numa_implicit-mimic.exe
+EXE=numa_hostregister.exe
 
 all : $(EXE)
 
 %.o : %.c
 	$(CC) -c $(CFLAGS) -o $@ $^
 
-$(EXE) : numa_implicit-mimic.cu
+$(EXE) : numa_hostregister.cu
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
 proper :

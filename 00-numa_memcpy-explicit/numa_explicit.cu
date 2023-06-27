@@ -68,12 +68,14 @@ usage:
     exit(EXIT_SUCCESS);
   }
 
+  nb_test++;
+
   cpu_set_t cpuset;
   pthread_t thread;
 
   thread = pthread_self();
 
-  int numcores = sysconf(_SC_NPROCESSORS_ONLN) / 2; // divided by 2 because of hyperthreading
+  int numcores = sysconf(_SC_NPROCESSORS_ONLN);
   int numanodes = numa_num_configured_nodes();
 
   int gpucount = -1;
@@ -207,10 +209,8 @@ usage:
       uint64_t *d_A;
       cudaMalloc(&d_A, N * sizeof(uint64_t));
 
-      cudaEvent_t start, stop;
-      cudaEventCreate(&start);
-      cudaEventCreate(&stop);
-
+      double t0 = 0.;
+      double t1 = 0.;
       duration = 0.;
       double throughput = 0.;
 
@@ -218,17 +218,15 @@ usage:
       for(int k = 0; k < nb_test; ++k)
       {
 
-        cudaEventRecord(start, 0);
+	cudaDeviceSynchronize();
+	t0 = get_elapsedtime();
         cudaMemcpyAsync(d_A, A, N * sizeof(uint64_t), cudaMemcpyHostToDevice, 0);
-        //cudaStreamSynchronize(0);
+        cudaStreamSynchronize(0);
+	t1 = get_elapsedtime();
 
-        cudaEventRecord(stop, 0);
-        cudaEventSynchronize(stop);
-
-        float milliseconds = 0;
-        cudaEventElapsedTime(&milliseconds, start, stop);
-
-        duration += (milliseconds/1000);
+	if(k == 0) { continue; }
+	fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", coreId, deviceId, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
+        duration += (t1 - t0);
 #ifdef DEBUG
         get_mempolicy(&allocnumaid, NULL, 0, (void*)A, MPOL_F_NODE | MPOL_F_ADDR);
         if(allocnumaid != cur_numanode)
@@ -238,7 +236,7 @@ usage:
         }
 #endif
       }
-      duration /= nb_test;
+      duration /= nb_test-1;
 
       throughput = size_in_mbytes / (duration * 1000);
       if(verbose)
@@ -255,19 +253,17 @@ usage:
       for(int k = 0; k < nb_test; ++k)
       {
 
-        cudaEventRecord(start, 0);
+	cudaDeviceSynchronize();
+        t0 = get_elapsedtime(); 
         cudaMemcpyAsync(A, d_A, N * sizeof(uint64_t), cudaMemcpyDeviceToHost, 0);
-        //cudaStreamSynchronize(0);
+        cudaStreamSynchronize(0);
+	t1 = get_elapsedtime();
 
-        cudaEventRecord(stop, 0);
-        cudaEventSynchronize(stop);
-
-        float milliseconds = 0;
-        cudaEventElapsedTime(&milliseconds, start, stop);
-
-        duration += (milliseconds/1000);
+	if(k == 0) { continue; }
+	//fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", coreId, deviceId, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
+        duration += (t1 - t0);
       }
-      duration /= nb_test;
+      duration /= nb_test-1;
       throughput = size_in_mbytes / (duration * 1000);
       if(verbose)
       {
@@ -281,7 +277,12 @@ usage:
       munmap(A, N * sizeof(uint64_t));
       //coreId += numcores / numanodes;
     }
-    coreId += 1;
+    coreId += 72;
+    if(coreId == 72)
+    {
+      continue;
+    }
+    coreId++;
   }
 
   char buff_explicit_time[100];

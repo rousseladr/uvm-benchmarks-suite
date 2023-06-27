@@ -8,11 +8,10 @@
 #include <errno.h>
 #include <unistd.h>
 #include <numa.h>
-#include <numaif.h>
 #include <cuda.h>
 #include <time.h>
 #include <inttypes.h>
-#include <sys/mman.h>
+#include <stdbool.h>
 
 #define gettime(t) clock_gettime(CLOCK_MONOTONIC_RAW, t)
 #define get_sub_seconde(t) (1e-9*(double)t.tv_nsec)
@@ -26,7 +25,16 @@ double get_elapsedtime(void)
   return (double)st.tv_sec + get_sub_seconde(st);
 }
 
-//#define N 1E8
+//#define N (unsigned long int)1E6
+
+__global__
+void init(uint64_t *x, uint64_t val, uint64_t N)
+{
+  int index = blockIdx.x * blockDim.x + threadIdx.x;
+  if(index < N)
+    x[index] = val;
+}
+
 
 #define handle_error_en(en, msg) \
   do { errno = en; perror(msg); exit(EXIT_FAILURE); } while (0)
@@ -61,14 +69,14 @@ int main(int argc, char *argv[])
   if (optind != argc)
   {
 usage:
-    fprintf(stdout, "CUDA Bench - Async. Memory Transfers Throughput evaluation with NUMA consideration 1.0.0\n");
-    fprintf(stdout, "usage: numa_memcpy-async.exe\n\t[-s size in MB]\n\t[-h print this help]\n");
+    fprintf(stdout, "CUDA Bench - Managed (Implicit) Memory Transfers Throughput evaluation with NUMA consideration 1.0.0\n");
+    fprintf(stdout, "usage: numa_implicit.exe\n\t[-s size in MB]\n\t[-h print this help]\n");
     fprintf(stdout, "\nPlot results using python3:\n");
-    fprintf(stdout, "numa_memcpy-async.exe -s <arg> && python3 plot.py <arg>\n");
+    fprintf(stdout, "numa_implicit.exe -s <arg> && python3 plot.py <arg>\n");
     exit(EXIT_SUCCESS);
   }
 
-  nb_test+=1;
+  nb_test++;
   cpu_set_t cpuset;
   pthread_t thread;
 
@@ -80,6 +88,7 @@ usage:
   int gpucount = -1;
   cudaGetDeviceCount(&gpucount);
 
+  //double t0 = 0., t1 = 0., duration = 0.;
   double duration = 0.;
   int *tgpu = (int*)malloc(sizeof(int) * numcores * gpucount);
   double *HtD = (double*)malloc(sizeof(double) * numcores * gpucount);
@@ -95,6 +104,7 @@ usage:
   double size_in_kbytes = size_in_mbytes*1000;
   double size_in_bytes = size_in_kbytes*1000;
 
+#define DEBUG
   if(verbose)
   {
 #ifdef DEBUG
@@ -117,7 +127,8 @@ usage:
 #ifdef DEBUG
   if(verbose)
   {
-    fprintf(stdout, "N = %lu\n", N);
+    printf("N = %lu\n", N);
+    printf("sizeof(uint64_t) = %lu\n", sizeof(uint64_t));
   }
 #endif
 
@@ -128,13 +139,13 @@ usage:
 
     if(coreId < 0 || coreId >= numcores)
     {
-      fprintf(stdout, "FATAL ERROR! Invalid core id\n");
+      printf("FATAL ERROR! Invalid core id\n");
       exit(EXIT_FAILURE);
     }
 
     if(verbose)
     {
-      fprintf(stdout, "Target core %d\n", coreId);
+      printf("Target core %d\n", coreId);
     }
     /* Set affinity mask to include CPUs coreId */
 
@@ -162,7 +173,7 @@ usage:
 
     if(j == CPU_SETSIZE)
     {
-      fprintf(stderr, "FATAL ERROR! Don't know on which core the thread is placed\n");
+      printf("FATAL ERROR! Don't know on which core the thread is placed\n");
       exit(EXIT_FAILURE);
     }
 
@@ -182,66 +193,37 @@ usage:
       }
       tgpu[coreId * gpucount + deviceId] = deviceId;
 
+      uint64_t *d_A;
       cudaStream_t stream;
+
+      // cudaMallocManaged(&d_A, N * sizeof(uint64_t));
+      d_A = (uint64_t*)malloc(sizeof(uint64_t) * N);
+      cudaHostRegister(&d_A, N * sizeof(uint64_t), CU_MEMHOSTALLOC_DEVICEMAP);
+      cudaMemAdvise(d_A, N * sizeof(uint64_t), cudaMemAdviseSetPreferredLocation, cudaCpuDeviceId);
       cudaStreamCreate(&stream);
 
-      cudaEvent_t start, stop;
-      cudaEventCreate(&start);
-      cudaEventCreate(&stop);
-
-      uint64_t *A;
-      cudaMallocHost(&A, N * sizeof(uint64_t));
-
-      for(int i = 0 ; i < N; ++i)
-      {
-        A[i] = i;
-      }
-
-      int allocnumaid = -1;
-      get_mempolicy(&allocnumaid, NULL, 0, (void*)A, MPOL_F_NODE | MPOL_F_ADDR);
-      if(allocnumaid != cur_numanode)
-      {
-        fprintf(stderr, "ERROR: bad NUMA allocation\n");
-        cudaFreeHost(A);
-        free(tgpu);
-        free(HtD);
-        free(DtH);
-        free(HtD_gbs);
-        free(DtH_gbs);
-        exit(EXIT_FAILURE);
-      }
-
-      uint64_t *d_A;
-      cudaMalloc(&d_A, N * sizeof(uint64_t));
-
-      duration = 0.;
-      double throughput = 0.;
       double t0 = 0., t1 = 0.;
-      cudaDeviceSynchronize();
+      duration = 0.;
       for(int k = 0; k < nb_test; ++k)
       {
-        cudaStreamSynchronize(stream);
+        for(int i = 0 ; i < N; ++i)
+        {
+          d_A[i] += (uint64_t)i;
+        }
+        cudaDeviceSynchronize();
 
 	t0 = get_elapsedtime();
-        cudaMemcpyAsync(d_A, A, N * sizeof(uint64_t), cudaMemcpyHostToDevice, stream);
-	cudaStreamSynchronize(stream);
+        cudaMemPrefetchAsync(d_A, N * sizeof(uint64_t), deviceId, stream);
+        cudaStreamSynchronize(stream);
 	t1 = get_elapsedtime();
 
 	if(k == 0) { continue; }
+	fprintf(stdout, "iter: %d | time: %lf | gbs: %lf\n", k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
         duration += (t1 - t0);
-
-#ifdef DEBUG
-        get_mempolicy(&allocnumaid, NULL, 0, (void*)A, MPOL_F_NODE | MPOL_F_ADDR);
-        if(allocnumaid != cur_numanode)
-        {
-          fprintf(stderr, "FATAL ERROR!!\n");
-          exit(-1);
-        }
-#endif
       }
 
-      duration /= nb_test-1;
-      throughput = size_in_mbytes / (duration * 1000);
+      duration /= nb_test;
+      double throughput = size_in_mbytes / (duration * 1000);
       if(verbose)
       {
         fprintf(stdout, "Performance results: \n");
@@ -250,24 +232,40 @@ usage:
       }
       HtD[coreId * gpucount + deviceId] = duration;
       HtD_gbs[coreId * gpucount + deviceId] = throughput;
+      cudaFree(d_A);
+      cudaStreamSynchronize(stream);
 
-      duration = 0.;
-      t0 = t1 = 0.;
+      uint64_t *d_B;
+      cudaMallocManaged(&d_B, N * sizeof(uint64_t));
+      cudaMemAdvise(d_B, N * sizeof(uint64_t), cudaMemAdviseSetPreferredLocation, deviceId);
       cudaDeviceSynchronize();
+
+      dim3 blockSize(32, 1, 1);
+      int nbBlocks = (N + 32 - 1) / 32;
+      dim3 gridSize(nbBlocks, 1, 1);
+
+      t0 = 0.; t1 = 0.; duration = 0.;
       for(int k = 0; k < nb_test; ++k)
       {
-        cudaStreamSynchronize(stream);
+        // First: push data on GPU
+        init<<<gridSize, blockSize>>>(d_B, 0x0, N);
+        cudaDeviceSynchronize();
 
-	t0 = get_elapsedtime();
-        cudaMemcpyAsync(A, d_A, N * sizeof(uint64_t), cudaMemcpyDeviceToHost, stream);
-	cudaStreamSynchronize(stream);
+        t0 = get_elapsedtime(); 
+        // Second: transfer data from GPU to CPU using prefetch mecanism
+        cudaMemPrefetchAsync(d_B, N * sizeof(uint64_t), cudaCpuDeviceId, stream);
+        // Wait until completion
+        cudaStreamSynchronize(stream);
 	t1 = get_elapsedtime();
 
 	if(k == 0) { continue; }
         duration += (t1 - t0);
       }
 
-      duration /= nb_test-1;
+      cudaFree(d_B);
+      cudaStreamDestroy(stream);
+
+      duration /= nb_test;
       throughput = size_in_mbytes / (duration * 1000);
       if(verbose)
       {
@@ -277,24 +275,22 @@ usage:
       DtH[coreId * gpucount + deviceId] = duration;
       DtH_gbs[coreId * gpucount + deviceId] = throughput;
 
-      cudaFree(d_A);
-      cudaFreeHost(A);
-      //coreId += numcores / numanodes;
     }
     coreId += 72;
     if(coreId == 0)
-    { continue; }
-    else
-    { coreId++; }
+    {
+      continue;
+    }
+    coreId++;
   }
 
-  char buff_memcpyasync_time[100];
-  snprintf(buff_memcpyasync_time, 100, "%lu-MB_numa_memcpyasync_time.csv", size_in_mbytes);
+  char buff_implicit_time[100];
+  snprintf(buff_implicit_time, 100, "%lu-MB_numa_implicit_time.csv", size_in_mbytes);
   FILE * outputFile;
-  outputFile = fopen( buff_memcpyasync_time, "w+" );
+  outputFile = fopen( buff_implicit_time, "w+" );
   if (outputFile == NULL)
   {
-    printf( "Cannot open file %s\n", buff_memcpyasync_time );
+    printf( "Cannot open file %s\n", buff_implicit_time );
     exit(EXIT_FAILURE);
   }
 
@@ -309,12 +305,12 @@ usage:
 
   fclose(outputFile);
 
-  char buff_memcpyasync_gbs[100];
-  snprintf(buff_memcpyasync_gbs, 100, "%lu-MB_numa_memcpyasync_gbs.csv", size_in_mbytes);
-  outputFile = fopen( buff_memcpyasync_gbs, "w+" );
+  char buff_implicit_gbs[100];
+  snprintf(buff_implicit_gbs, 100, "%lu-MB_numa_implicit_gbs.csv", size_in_mbytes);
+  outputFile = fopen( buff_implicit_gbs, "w+" );
   if (outputFile == NULL)
   {
-    printf( "Cannot open file %s\n", buff_memcpyasync_gbs );
+    printf( "Cannot open file %s\n", buff_implicit_gbs );
     exit(EXIT_FAILURE);
   }
 
@@ -329,8 +325,8 @@ usage:
 
   fclose(outputFile);
 
-  fprintf(stdout, "Results saved in:\n\tGB/s: %s\n", buff_memcpyasync_gbs);
-  fprintf(stdout, "\tTime: %s\n", buff_memcpyasync_time);
+  fprintf(stdout, "Results saved in:\n\tGB/s: %s\n", buff_implicit_gbs);
+  fprintf(stdout, "\tTime: %s\n", buff_implicit_time);
 
   free(tgpu);
   free(HtD);
