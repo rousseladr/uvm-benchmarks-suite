@@ -40,12 +40,15 @@ int main(int argc, char *argv[])
   bool verbose = false;
 
   int opt;
-  while ((opt = getopt(argc, argv, "vhs:")) != -1)
+  while ((opt = getopt(argc, argv, "vhs:i:")) != -1)
   {
     switch (opt)
     {
       case 's':
         size_in_mbytes = (uint64_t)atoi(optarg);
+        break;
+      case 'i':
+        nb_test = (int)atoi(optarg);
         break;
       case 'v':
         verbose = true;

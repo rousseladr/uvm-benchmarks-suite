@@ -28,6 +28,8 @@ make clean all
 mkdir -p $RESULT_DIR
 cd $RESULT_DIR
 
+NITER=25
+
 # for i in 1 5 10 50 100 250 500 1000 2500 5000
 for i in 5 10 50 100
 do
@@ -38,11 +40,11 @@ do
   mkdir -p "$TEST_DIR/pdf"
   cd "$TEST_DIR/csv"
 
-  $SRC_DIR/00-numa_memcpy-explicit/numa_explicit.exe -s $i
-  $SRC_DIR/01-numa_memcpy-managed/numa_implicit.exe -s $i
-  $SRC_DIR/02-numa_memcpy-implicit-mimic/numa_implicit-mimic.exe -s $i
-  $SRC_DIR/03-numa_memcpyasync/numa_memcpy-async.exe -s $i
-  $SRC_DIR/04-numa_hostRegister/numa_hostregister.exe -s $i
+  $SRC_DIR/00-numa_memcpy-explicit/numa_explicit.exe -i $NITER -s $i
+  $SRC_DIR/01-numa_memcpy-managed/numa_implicit.exe -i $NITER -s $i
+  $SRC_DIR/02-numa_memcpy-implicit-mimic/numa_implicit-mimic.exe -i $NITER -s $i
+  $SRC_DIR/03-numa_memcpyasync/numa_memcpy-async.exe -i $NITER -s $i
+  $SRC_DIR/04-numa_hostRegister/numa_hostregister.exe -i $NITER -s $i
 
   #res_dir="$SRC_DIR/results"
   #cd $res_dir
