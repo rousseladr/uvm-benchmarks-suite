@@ -17,11 +17,13 @@ f0=sys.argv[1]+"/"+sys.argv[2]+"MB/csv/"+sys.argv[2]+"-MB_numa_explicit_gbs.csv"
 f1=sys.argv[1]+"/"+sys.argv[2]+"MB/csv/"+sys.argv[2]+"-MB_numa_implicit_gbs.csv"
 f2=sys.argv[1]+"/"+sys.argv[2]+"MB/csv/"+sys.argv[2]+"-MB_numa_implicit-mimic_gbs.csv"
 f3=sys.argv[1]+"/"+sys.argv[2]+"MB/csv/"+sys.argv[2]+"-MB_numa_memcpyasync_gbs.csv"
+f4=sys.argv[1]+"/"+sys.argv[2]+"MB/csv/"+sys.argv[2]+"-MB_numa_hostRegister_gbs.csv"
 
 df0 = pd.read_csv(f0, delimiter='\t')
 df1 = pd.read_csv(f1, delimiter='\t')
 df2 = pd.read_csv(f2, delimiter='\t')
 df3 = pd.read_csv(f3, delimiter='\t')
+df4 = pd.read_csv(f4, delimiter='\t')
 
 y0 = df0["gpu"]
 x0 = df0["core"]
@@ -51,11 +53,18 @@ A3[x3,y3] = df3["HostToDevice"]
 B3 = np.zeros((x3.max()+1,y3.max()+1))
 B3[x3,y3] = df3["DeviceToHost"]
 
-minallA = np.array([A0.min(), A1.min(), A2.min(), A3.min()])
-maxallA = np.array([A0.max(), A1.max(), A2.max(), A3.max()])
+y4 = df4["gpu"]
+x4 = df4["core"]
+A4 = np.zeros((x4.max()+1,y4.max()+1))
+A4[x4,y4] = df4["HostToDevice"]
+B4 = np.zeros((x4.max()+1,y4.max()+1))
+B4[x4,y4] = df4["DeviceToHost"]
 
-minallB = np.array([B0.min(), B1.min(), B2.min(), B3.min()])
-maxallB = np.array([B0.max(), B1.max(), B2.max(), B3.max()])
+minallA = np.array([A0.min(), A1.min(), A2.min(), A3.min(), A4.min()])
+maxallA = np.array([A0.max(), A1.max(), A2.max(), A3.max(), A4.max()])
+
+minallB = np.array([B0.min(), B1.min(), B2.min(), B3.min(), B4.min()])
+maxallB = np.array([B0.max(), B1.max(), B2.max(), B3.max(), B4.max()])
 
 minag = minallA.min()
 maxag = maxallA.max()
@@ -151,6 +160,26 @@ plt.suptitle(sys.argv[2]+"MB - Device To Host")
 plt.xlabel('GPU Number')
 plt.ylabel('Core Number')
 fsave=res_dir+sys.argv[2]+"-MB_"+sys.argv[1]+"_DtH_async-explicit.pdf"
+plt.savefig(fsave, format="pdf", bbox_inches="tight")
+
+plt.clf()
+
+sns.heatmap(A4, vmin=minag, vmax=maxag, center=meda, cmap="ocean")
+plt.title("Throughput (GB/s) of cudaHostRegister on "+sys.argv[1]+" - Explicit")
+plt.suptitle(sys.argv[2]+"MB - Host To Device")
+plt.xlabel('GPU Number')
+plt.ylabel('Core Number')
+fsave=res_dir+sys.argv[2]+"-MB_"+sys.argv[1]+"_HtD_hostRegister.pdf"
+plt.savefig(fsave, format="pdf", bbox_inches="tight")
+
+plt.clf()
+
+sns.heatmap(B4, vmin=minbg, vmax=maxbg, center=medb, cmap="ocean")
+plt.title("Throughput (GB/s) of cudaHostRegister on "+sys.argv[1]+" - Explicit")
+plt.suptitle(sys.argv[2]+"MB - Device To Host")
+plt.xlabel('GPU Number')
+plt.ylabel('Core Number')
+fsave=res_dir+sys.argv[2]+"-MB_"+sys.argv[1]+"_DtH_hostRegister.pdf"
 plt.savefig(fsave, format="pdf", bbox_inches="tight")
 
 plt.clf()
