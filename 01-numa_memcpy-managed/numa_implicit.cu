@@ -277,11 +277,6 @@ usage:
       DtH_gbs[coreId * gpucount + deviceId] = throughput;
 
     }
-    coreId += 72;
-    if(coreId == 72)
-    {
-      continue;
-    }
     coreId++;
   }
 

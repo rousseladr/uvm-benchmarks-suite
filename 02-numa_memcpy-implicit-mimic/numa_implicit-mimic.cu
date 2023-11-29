@@ -313,8 +313,6 @@ usage:
       cudaFreeHost(A);
       //coreId += numcores / numanodes;
     }
-    if(coreId == 0)
-    { continue; }
     coreId += 1;
   }
 

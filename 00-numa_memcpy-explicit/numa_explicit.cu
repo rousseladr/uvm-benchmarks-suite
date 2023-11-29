@@ -280,11 +280,6 @@ usage:
       munmap(A, N * sizeof(uint64_t));
       //coreId += numcores / numanodes;
     }
-    coreId += 72;
-    if(coreId == 72)
-    {
-      continue;
-    }
     coreId++;
   }
 

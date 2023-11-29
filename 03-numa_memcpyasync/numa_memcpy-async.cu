@@ -284,11 +284,7 @@ usage:
       cudaFreeHost(A);
       //coreId += numcores / numanodes;
     }
-    coreId += 72;
-    if(coreId == 0)
-    { continue; }
-    else
-    { coreId++; }
+    coreId++;
   }
 
   char buff_memcpyasync_time[100];
