@@ -8,7 +8,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <numa.h>
-#include <cuda.h>
+#include <hip/hip_runtime.h>
 #include <time.h>
 #include <inttypes.h>
 #include <stdbool.h>
@@ -89,7 +89,7 @@ usage:
   int numanodes = numa_num_configured_nodes();
 
   int gpucount = -1;
-  cudaGetDeviceCount(&gpucount);
+  hipGetDeviceCount(&gpucount);
 
   //double t0 = 0., t1 = 0., duration = 0.;
   double duration = 0.;
@@ -189,7 +189,7 @@ usage:
 
     for(int deviceId = 0; deviceId < gpucount; ++deviceId)
     {
-      cudaSetDevice(deviceId);
+      hipSetDevice(deviceId);
       if(verbose)
       {
         fprintf(stdout, "Set Device to %d\n", deviceId);
@@ -197,11 +197,11 @@ usage:
       tgpu[coreId * gpucount + deviceId] = deviceId;
 
       uint64_t *d_A;
-      cudaStream_t stream;
+      hipStream_t stream;
 
-      cudaMallocManaged(&d_A, N * sizeof(uint64_t));
-      cudaMemAdvise(d_A, N * sizeof(uint64_t), cudaMemAdviseSetPreferredLocation, cudaCpuDeviceId);
-      cudaStreamCreate(&stream);
+      hipMallocManaged(&d_A, N * sizeof(uint64_t));
+      hipMemAdvise(d_A, N * sizeof(uint64_t), hipMemAdviseSetPreferredLocation, hipCpuDeviceId);
+      hipStreamCreate(&stream);
 
       double t0 = 0., t1 = 0.;
       duration = 0.;
@@ -211,11 +211,11 @@ usage:
         {
           d_A[i] += (uint64_t)i;
         }
-        cudaDeviceSynchronize();
+        hipDeviceSynchronize();
 
 	t0 = get_elapsedtime();
-        cudaMemPrefetchAsync(d_A, N * sizeof(uint64_t), deviceId, stream);
-        cudaStreamSynchronize(stream);
+        hipMemPrefetchAsync(d_A, N * sizeof(uint64_t), deviceId, stream);
+        hipStreamSynchronize(stream);
 	t1 = get_elapsedtime();
 
 	if(k == 0) { continue; }
@@ -233,13 +233,13 @@ usage:
       }
       HtD[coreId * gpucount + deviceId] = duration;
       HtD_gbs[coreId * gpucount + deviceId] = throughput;
-      cudaFree(d_A);
-      cudaStreamSynchronize(stream);
+      hipFree(d_A);
+      hipStreamSynchronize(stream);
 
       uint64_t *d_B;
-      cudaMallocManaged(&d_B, N * sizeof(uint64_t));
-      cudaMemAdvise(d_B, N * sizeof(uint64_t), cudaMemAdviseSetPreferredLocation, deviceId);
-      cudaDeviceSynchronize();
+      hipMallocManaged(&d_B, N * sizeof(uint64_t));
+      hipMemAdvise(d_B, N * sizeof(uint64_t), hipMemAdviseSetPreferredLocation, deviceId);
+      hipDeviceSynchronize();
 
       dim3 blockSize(32, 1, 1);
       int nbBlocks = (N + 32 - 1) / 32;
@@ -250,21 +250,21 @@ usage:
       {
         // First: push data on GPU
         init<<<gridSize, blockSize>>>(d_B, 0x0, N);
-        cudaDeviceSynchronize();
+        hipDeviceSynchronize();
 
         t0 = get_elapsedtime(); 
         // Second: transfer data from GPU to CPU using prefetch mecanism
-        cudaMemPrefetchAsync(d_B, N * sizeof(uint64_t), cudaCpuDeviceId, stream);
+        hipMemPrefetchAsync(d_B, N * sizeof(uint64_t), hipCpuDeviceId, stream);
         // Wait until completion
-        cudaStreamSynchronize(stream);
+        hipStreamSynchronize(stream);
 	t1 = get_elapsedtime();
 
 	if(k == 0) { continue; }
         duration += (t1 - t0);
       }
 
-      cudaFree(d_B);
-      cudaStreamDestroy(stream);
+      hipFree(d_B);
+      hipStreamDestroy(stream);
 
       duration /= nb_test;
       throughput = size_in_mbytes / (duration * 1000);

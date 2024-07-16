@@ -9,7 +9,7 @@
 #include <unistd.h>
 #include <numa.h>
 #include <numaif.h>
-#include <cuda.h>
+#include <hip/hip_runtime.h>
 #include <time.h>
 #include <inttypes.h>
 #include <sys/mman.h>
@@ -81,7 +81,7 @@ usage:
   int numanodes = numa_num_configured_nodes();
 
   int gpucount = -1;
-  cudaGetDeviceCount(&gpucount);
+  hipGetDeviceCount(&gpucount);
 
   double duration = 0.;
   int *tgpu = (int*)malloc(sizeof(int) * numcores * gpucount);
@@ -178,22 +178,22 @@ usage:
 
     for(int deviceId = 0; deviceId < gpucount; ++deviceId)
     {
-      cudaSetDevice(deviceId);
+      hipSetDevice(deviceId);
       if(verbose)
       {
         fprintf(stdout, "Set Device to %d\n", deviceId);
       }
       tgpu[coreId * gpucount + deviceId] = deviceId;
 
-      cudaStream_t stream;
-      cudaStreamCreate(&stream);
+      hipStream_t stream;
+      hipStreamCreate(&stream);
 
-      cudaEvent_t start, stop;
-      cudaEventCreate(&start);
-      cudaEventCreate(&stop);
+      hipEvent_t start, stop;
+      hipEventCreate(&start);
+      hipEventCreate(&stop);
 
       uint64_t *A;
-      cudaMallocHost(&A, N * sizeof(uint64_t));
+      hipHostMalloc(&A, N * sizeof(uint64_t));
 
       for(int i = 0 ; i < N; ++i)
       {
@@ -205,7 +205,7 @@ usage:
       if(allocnumaid != cur_numanode)
       {
         fprintf(stderr, "ERROR: bad NUMA allocation\n");
-        cudaFreeHost(A);
+        hipHostFree(A);
         free(tgpu);
         free(HtD);
         free(DtH);
@@ -215,19 +215,19 @@ usage:
       }
 
       uint64_t *d_A;
-      cudaMalloc(&d_A, N * sizeof(uint64_t));
+      hipMalloc(&d_A, N * sizeof(uint64_t));
 
       duration = 0.;
       double throughput = 0.;
       double t0 = 0., t1 = 0.;
-      cudaDeviceSynchronize();
+      hipDeviceSynchronize();
       for(int k = 0; k < nb_test; ++k)
       {
-        cudaStreamSynchronize(stream);
+        hipStreamSynchronize(stream);
 
 	t0 = get_elapsedtime();
-        cudaMemcpyAsync(d_A, A, N * sizeof(uint64_t), cudaMemcpyHostToDevice, stream);
-	cudaStreamSynchronize(stream);
+        hipMemcpyAsync(d_A, A, N * sizeof(uint64_t), hipMemcpyHostToDevice, stream);
+	hipStreamSynchronize(stream);
 	t1 = get_elapsedtime();
 
 	if(k == 0) { continue; }
@@ -256,14 +256,14 @@ usage:
 
       duration = 0.;
       t0 = t1 = 0.;
-      cudaDeviceSynchronize();
+      hipDeviceSynchronize();
       for(int k = 0; k < nb_test; ++k)
       {
-        cudaStreamSynchronize(stream);
+        hipStreamSynchronize(stream);
 
 	t0 = get_elapsedtime();
-        cudaMemcpyAsync(A, d_A, N * sizeof(uint64_t), cudaMemcpyDeviceToHost, stream);
-	cudaStreamSynchronize(stream);
+        hipMemcpyAsync(A, d_A, N * sizeof(uint64_t), hipMemcpyDeviceToHost, stream);
+	hipStreamSynchronize(stream);
 	t1 = get_elapsedtime();
 
 	if(k == 0) { continue; }
@@ -280,8 +280,8 @@ usage:
       DtH[coreId * gpucount + deviceId] = duration;
       DtH_gbs[coreId * gpucount + deviceId] = throughput;
 
-      cudaFree(d_A);
-      cudaFreeHost(A);
+      hipFree(d_A);
+      hipHostFree(A);
       //coreId += numcores / numanodes;
     }
     coreId++;

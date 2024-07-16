@@ -10,7 +10,7 @@
 #include <unistd.h>
 #include <numa.h>
 #include <numaif.h>
-#include <cuda.h>
+#include <hip/hip_runtime.h>
 #include <time.h>
 #include <inttypes.h>
 #include <sys/mman.h>
@@ -82,7 +82,7 @@ usage:
   int numanodes = numa_num_configured_nodes();
 
   int gpucount = -1;
-  cudaGetDeviceCount(&gpucount);
+  hipGetDeviceCount(&gpucount);
 
   //double t0 = 0., t1 = 0., duration = 0.;
   double duration = 0.;
@@ -186,19 +186,20 @@ usage:
     //int deviceId = 0;
     for(int deviceId = 0; deviceId < gpucount; ++deviceId)
     {
-      cudaSetDevice(deviceId);
+      hipSetDevice(deviceId);
       if(verbose)
       {
         fprintf(stdout, "Set Device to %d\n", deviceId);
       }
       tgpu[coreId * gpucount + deviceId] = deviceId;
 
-      cudaStream_t stream;
-      cudaStreamCreate(&stream);
+      hipStream_t stream;
+      hipStreamCreate(&stream);
 
       uint64_t *A;
       //A = (uint64_t*) mmap(0, N * sizeof(uint64_t), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
-      cudaMallocHost(&A, N * sizeof(uint64_t));
+      //hipMallocHost(&A, N * sizeof(uint64_t));
+      hipHostMalloc(&A, N * sizeof(uint64_t));
 
       for(int i = 0 ; i < N; ++i)
       {
@@ -220,25 +221,25 @@ usage:
       }
 
       uint64_t *d_A;
-      cudaMalloc(&d_A, N * sizeof(uint64_t));
+      hipMalloc(&d_A, N * sizeof(uint64_t));
 
       double t0 = 0.;
       double t1 = 0.;
       duration = 0.;
       double throughput = 0.;
-      cudaDeviceSynchronize();
+      hipDeviceSynchronize();
       for(int k = 0; k < nb_test; ++k)
       {
         //t0 = get_elapsedtime();
 
-        cudaStreamSynchronize(stream);
+        hipStreamSynchronize(stream);
 	t0 = get_elapsedtime();
         for(int i = 0; i < nb_memcpy; ++i)
         {
 #ifdef DEBUG
           printf("Transfer #%d: %d entries\n", i, x);
 #endif
-          cudaMemcpyAsync((d_A + i * x), (A + i * x), x * sizeof(uint64_t), cudaMemcpyHostToDevice, stream);
+          hipMemcpyAsync((d_A + i * x), (A + i * x), x * sizeof(uint64_t), hipMemcpyHostToDevice, stream);
         }
 
         if(((int)N)%x != 0)
@@ -246,10 +247,10 @@ usage:
 #ifdef DEBUG
           printf("Transfer #%d: %d entries\n", nb_memcpy, ((int)N)%x);
 #endif
-          cudaMemcpyAsync((d_A + nb_memcpy * x), (A + nb_memcpy * x), (((int)N)%x) * sizeof(uint64_t), cudaMemcpyHostToDevice, stream);
+          hipMemcpyAsync((d_A + nb_memcpy * x), (A + nb_memcpy * x), (((int)N)%x) * sizeof(uint64_t), hipMemcpyHostToDevice, stream);
         }
 
-        cudaStreamSynchronize(stream);
+        hipStreamSynchronize(stream);
 	t1 = get_elapsedtime();
 
 	if(k == 0) { continue; }
@@ -272,25 +273,25 @@ usage:
       t0 = 0.;
       t1 = 0.;
       duration = 0.;
-      cudaDeviceSynchronize();
+      hipDeviceSynchronize();
       for(int k = 0; k < nb_test; ++k)
       {
-        cudaStreamSynchronize(stream);
+        hipStreamSynchronize(stream);
 	t0 = get_elapsedtime();
 
         for(int i = 0; i < nb_memcpy; ++i)
         {
           /* printf("Transfer #%d: %d entries\n", i, x); */
-          cudaMemcpyAsync((A + i * x), (d_A + i * x), x * sizeof(double), cudaMemcpyDeviceToHost, stream);
+          hipMemcpyAsync((A + i * x), (d_A + i * x), x * sizeof(double), hipMemcpyDeviceToHost, stream);
         }
 
         if(((int)N)%x != 0)
         {
           /* printf("Transfer #%d: %d entries\n", nb_memcpy, ((int)N)%x); */
-          cudaMemcpyAsync((A + nb_memcpy * x), (d_A + nb_memcpy * x), (((int)N)%x) * sizeof(double), cudaMemcpyDeviceToHost, stream);
+          hipMemcpyAsync((A + nb_memcpy * x), (d_A + nb_memcpy * x), (((int)N)%x) * sizeof(double), hipMemcpyDeviceToHost, stream);
         }
 
-        cudaStreamSynchronize(stream);
+        hipStreamSynchronize(stream);
 	t1 = get_elapsedtime();
 
 	if(k == 0) { continue; }
@@ -308,9 +309,9 @@ usage:
       DtH[coreId * gpucount + deviceId] = duration;
       DtH_gbs[coreId * gpucount + deviceId] = throughput;
 
-      cudaFree(d_A);
+      hipFree(d_A);
       //munmap(A, N * sizeof(double));
-      cudaFreeHost(A);
+      hipHostFree(A);
       //coreId += numcores / numanodes;
     }
     coreId += 1;

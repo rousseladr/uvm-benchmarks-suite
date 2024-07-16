@@ -1,4 +1,4 @@
-CC=nvcc
+CC=hipcc
 CFLAGS=-O3
 CFLAGS+=`pkg-config --cflags numa`
 LDFLAGS=-lpthread -lnuma
