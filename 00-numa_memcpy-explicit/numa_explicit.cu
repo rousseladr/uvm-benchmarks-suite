@@ -31,6 +31,15 @@ double get_elapsedtime(void)
 #define handle_error_en(en, msg) \
   do { errno = en; perror(msg); exit(EXIT_FAILURE); } while (0)
 
+__global__ void copy( uint64_t* dst, uint64_t* src, size_t n )
+{
+    for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < n; i+= blockDim.x * gridDim.x )
+    {
+        dst[i] = src[i];
+    }
+}
+
+
 int main(int argc, char *argv[])
 {
   int nb_test = 25;
@@ -38,9 +47,10 @@ int main(int argc, char *argv[])
   int cpu = -1;
   uint64_t size_in_mbytes = 100;
   bool verbose = false;
+  bool device_copy = false;
 
   int opt;
-  while ((opt = getopt(argc, argv, "vhs:i:")) != -1)
+  while ((opt = getopt(argc, argv, "vhs:i:d")) != -1)
   {
     switch (opt)
     {
@@ -56,6 +66,9 @@ int main(int argc, char *argv[])
       case 'h':
         goto usage;
         break;
+      case 'd':
+	device_copy = true;
+	break;
       default:
         goto usage;
     }
@@ -228,7 +241,10 @@ usage:
 	t1 = get_elapsedtime();
 
 	if(k == 0) { continue; }
-	fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", coreId, deviceId, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
+	if(verbose)
+	{
+	  fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", coreId, deviceId, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
+	}
         duration += (t1 - t0);
 #ifdef DEBUG
         get_mempolicy(&allocnumaid, NULL, 0, (void*)A, MPOL_F_NODE | MPOL_F_ADDR);
@@ -257,13 +273,28 @@ usage:
       {
 
 	cudaDeviceSynchronize();
-        t0 = get_elapsedtime(); 
-        cudaMemcpyAsync(A, d_A, N * sizeof(uint64_t), cudaMemcpyDeviceToHost, 0);
-        cudaStreamSynchronize(0);
-	t1 = get_elapsedtime();
+	if(!device_copy)
+	{
+          t0 = get_elapsedtime(); 
+          cudaMemcpyAsync(A, d_A, N * sizeof(uint64_t), cudaMemcpyDeviceToHost, 0);
+          cudaStreamSynchronize(0);
+	  t1 = get_elapsedtime();
+	}
+	else
+	{
+	  dim3  dimBlock(64, 1, 1);
+  	  dim3  dimGrid((N + dimBlock.x - 1)/dimBlock.x, 1, 1);
+          t0 = get_elapsedtime(); 
+	  copy<<<dimGrid, dimBlock>>>(A, d_A, N);
+          cudaStreamSynchronize(0);
+	  t1 = get_elapsedtime();
+	}
 
 	if(k == 0) { continue; }
-	//fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", coreId, deviceId, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
+	if(verbose)
+	{
+	  fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", coreId, deviceId, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
+	}
         duration += (t1 - t0);
       }
       duration /= nb_test-1;
