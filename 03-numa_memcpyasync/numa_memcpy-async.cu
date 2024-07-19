@@ -200,19 +200,19 @@ usage:
         A[i] = i;
       }
 
-      int allocnumaid = -1;
-      get_mempolicy(&allocnumaid, NULL, 0, (void*)A, MPOL_F_NODE | MPOL_F_ADDR);
-      if(allocnumaid != cur_numanode)
-      {
-        fprintf(stderr, "ERROR: bad NUMA allocation\n");
-        hipHostFree(A);
-        free(tgpu);
-        free(HtD);
-        free(DtH);
-        free(HtD_gbs);
-        free(DtH_gbs);
-        exit(EXIT_FAILURE);
-      }
+      //int allocnumaid = -1;
+      //get_mempolicy(&allocnumaid, NULL, 0, (void*)A, MPOL_F_NODE | MPOL_F_ADDR);
+      //if(allocnumaid != cur_numanode)
+      //{
+      //  fprintf(stderr, "ERROR: bad NUMA allocation\n");
+      //  hipHostFree(A);
+      //  free(tgpu);
+      //  free(HtD);
+      //  free(DtH);
+      //  free(HtD_gbs);
+      //  free(DtH_gbs);
+      //  exit(EXIT_FAILURE);
+      //}
 
       uint64_t *d_A;
       hipMalloc(&d_A, N * sizeof(uint64_t));

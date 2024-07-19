@@ -221,7 +221,10 @@ usage:
 	t1 = get_elapsedtime();
 
 	if(k == 0) { continue; }
-	fprintf(stdout, "iter: %d | time: %lf | gbs: %lf\n", k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
+	if(verbose)
+	{
+	  fprintf(stdout, "iter: %d | time: %lf | gbs: %lf\n", k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
+	}
         duration += (t1 - t0);
       }
 

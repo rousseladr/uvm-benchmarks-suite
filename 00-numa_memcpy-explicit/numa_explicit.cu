@@ -211,6 +211,7 @@ usage:
 
       uint64_t *d_A;
       hipMalloc(&d_A, N * sizeof(uint64_t));
+      //hipMemset(d_A, 0, N * sizeof(uint64_t));
 
       double t0 = 0.;
       double t1 = 0.;
@@ -228,7 +229,10 @@ usage:
 	t1 = get_elapsedtime();
 
 	if(k == 0) { continue; }
-	//fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", coreId, deviceId, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
+	if(verbose)
+	{
+	  fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", coreId, deviceId, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
+	}
         duration += (t1 - t0);
 #ifdef DEBUG
         get_mempolicy(&allocnumaid, NULL, 0, (void*)A, MPOL_F_NODE | MPOL_F_ADDR);
@@ -263,7 +267,10 @@ usage:
 	t1 = get_elapsedtime();
 
 	if(k == 0) { continue; }
-	//fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", coreId, deviceId, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
+	if(verbose)
+	{
+	  fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", coreId, deviceId, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
+	}
         duration += (t1 - t0);
       }
       duration /= nb_test-1;

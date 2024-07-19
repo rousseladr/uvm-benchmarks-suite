@@ -25,27 +25,32 @@ RESULT_DIR="$SRC_DIR/results/$SLURM_JOB_PARTITION"
 #cd $SRC_DIR/04-numa_hostRegister/
 #make clean all
 #
+#cd $SRC_DIR/05-numa_memcpy-system/
+#make clean all
+
 #mkdir -p $RESULT_DIR
 cd $RESULT_DIR
 
 NITER=25
 
-for i in 1 5 10 50 100 250 500 1000 2500 5000
+#for i in 1 5 10 50 100 250 500 1000 2500 5000
+#for i in 100
 # for i in 5 10 50 100
-#for i in 250 500 1000 2500 5000
+for i in 1 5 10 50 100 250 500 1000 2500 5000
 do
   TEST_DIR="$RESULT_DIR/$i"
   TEST_DIR+="MB"
   #mkdir -p "$TEST_DIR"
   #mkdir -p "$TEST_DIR/csv"
   #mkdir -p "$TEST_DIR/pdf"
-  #cd "$TEST_DIR/csv"
+  cd "$TEST_DIR/csv"
 
   #$SRC_DIR/00-numa_memcpy-explicit/numa_explicit.exe -i $NITER -s $i
   #$SRC_DIR/01-numa_memcpy-managed/numa_implicit.exe -i $NITER -s $i
   #$SRC_DIR/02-numa_memcpy-implicit-mimic/numa_implicit-mimic.exe -i $NITER -s $i
   #$SRC_DIR/03-numa_memcpyasync/numa_memcpy-async.exe -i $NITER -s $i
   #$SRC_DIR/04-numa_hostRegister/numa_hostregister.exe -i $NITER -s $i
+  #$SRC_DIR/05-numa_memcpy-system/numa_explicit.exe -i $NITER -s $i
 
   res_dir="$SRC_DIR/results"
   cd $res_dir
