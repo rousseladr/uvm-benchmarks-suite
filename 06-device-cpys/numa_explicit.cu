@@ -117,23 +117,20 @@ usage:
 
   thread = pthread_self();
 
-  int numcores = sysconf(_SC_NPROCESSORS_ONLN);
-  int numanodes = numa_num_configured_nodes();
-
   int gpucount = -1;
   HIP_CHECK(hipGetDeviceCount(&gpucount));
 
   double duration = 0.;
-  int *tgpu = (int*)malloc(sizeof(int) * numcores * gpucount);
-  double *HtD = (double*)malloc(sizeof(double) * numcores * gpucount);
-  double *DtH = (double*)malloc(sizeof(double) * numcores * gpucount);
-  double *HtD_gbs = (double*)malloc(sizeof(double) * numcores * gpucount);
-  double *DtH_gbs = (double*)malloc(sizeof(double) * numcores * gpucount);
-  memset(tgpu, -1, sizeof(int) * numcores * gpucount);
-  memset(HtD, 0, sizeof(double) * numcores * gpucount);
-  memset(DtH, 0, sizeof(double) * numcores * gpucount);
-  memset(HtD_gbs, 0, sizeof(double) * numcores * gpucount);
-  memset(DtH_gbs, 0, sizeof(double) * numcores * gpucount);
+  int *tgpu = (int*)malloc(sizeof(int) * gpucount * gpucount);
+  double *DtD = (double*)malloc(sizeof(double) * gpucount * gpucount);
+  double *DtD_gbs = (double*)malloc(sizeof(double) * gpucount * gpucount);
+  double *DtDsm = (double*)malloc(sizeof(double) * gpucount * gpucount);
+  double *DtDsm_gbs = (double*)malloc(sizeof(double) * gpucount * gpucount);
+  memset(tgpu, -1, sizeof(int) * gpucount * gpucount);
+  memset(DtD, 0, sizeof(double) * gpucount * gpucount);
+  memset(DtD_gbs, 0, sizeof(double) * gpucount * gpucount);
+  memset(DtDsm, 0, sizeof(double) * gpucount * gpucount);
+  memset(DtDsm_gbs, 0, sizeof(double) * gpucount * gpucount);
 
   double size_in_kbytes = size_in_mbytes*1000;
   double size_in_bytes = size_in_kbytes*1000;
@@ -164,93 +161,46 @@ usage:
   }
 #endif
 
-  int coreId = 0;
+  int gpu_src = 0;
 
-  while( coreId < numcores)
+  while( gpu_src < gpucount)
   {
 
-    if(coreId < 0 || coreId >= numcores)
+    if(gpu_src < 0 || gpu_src >= gpucount)
     {
-      fprintf(stdout, "FATAL ERROR! Invalid core id\n");
+      fprintf(stdout, "FATAL ERROR! Invalid device id (#%d)\n", gpu_src);
       exit(EXIT_FAILURE);
     }
 
     if(verbose)
     {
-      fprintf(stdout, "Target core %d\n", coreId);
-    }
-    /* Set affinity mask to include CPUs coreId */
-
-    CPU_ZERO(&cpuset);
-    CPU_SET(coreId, &cpuset);
-
-    s = pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
-    if (s != 0)
-      handle_error_en(s, "pthread_setaffinity_np");
-
-    /* Check the actual affinity mask assigned to the thread */
-
-    s = pthread_getaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
-    if (s != 0)
-      handle_error_en(s, "pthread_getaffinity_np");
-
-    for (j = 0; j < CPU_SETSIZE; j++)
-    {
-      if (CPU_ISSET(j, &cpuset))
-      {
-        cpu = j;
-        break;
-      }
+      fprintf(stdout, "Target device %d\n", gpu_src);
     }
 
-    if(j == CPU_SETSIZE)
+    uint64_t *A;
+    A = (uint64_t*) mmap(0, N * sizeof(uint64_t), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+
+    for(int i = 0 ; i < N; ++i)
     {
-      fprintf(stdout, "FATAL ERROR! Don't know on which core the thread is placed\n");
-      exit(EXIT_FAILURE);
+      A[i] = i;
     }
 
-    int cur_numanode = numa_node_of_cpu(cpu);
-    if(verbose)
-    {
-      fprintf(stdout, "Running on CPU %d of %d\n", cpu, numcores);
-      fprintf(stdout, "Running on NUMA %d of %d\n", cur_numanode, numanodes);
-    }
+    HIP_CHECK(hipSetDevice(gpu_src));
+    uint64_t *d_src;
+    HIP_CHECK(hipMalloc(&d_src, N * sizeof(uint64_t)));
+    HIP_CHECK(hipMemcpy(d_src, A, N * sizeof(uint64_t), hipMemcpyHostToDevice));
 
-    for(int deviceId = 0; deviceId < gpucount; ++deviceId)
+    for(int gpu_dest = 0; gpu_dest < gpucount; ++gpu_dest)
     {
-      HIP_CHECK(hipSetDevice(deviceId));
+      HIP_CHECK(hipSetDevice(gpu_dest));
       if(verbose)
       {
-        fprintf(stdout, "Set Device to %d\n", deviceId);
+        fprintf(stdout, "Set Device to %d\n", gpu_dest);
       }
-      tgpu[coreId * gpucount + deviceId] = deviceId;
+      tgpu[gpu_src * gpucount + gpu_dest] = gpu_dest;
 
-      uint64_t *A;
-      A = (uint64_t*) mmap(0, N * sizeof(uint64_t), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
-      //A = (uint64_t*) numa_alloc_onnode(N * sizeof(uint64_t), cur_numanode);
-
-      for(int i = 0 ; i < N; ++i)
-      {
-        A[i] = i;
-      }
-
-      int allocnumaid = -1;
-      get_mempolicy(&allocnumaid, NULL, 0, (void*)A, MPOL_F_NODE | MPOL_F_ADDR);
-      if(allocnumaid != cur_numanode)
-      {
-        fprintf(stderr, "ERROR: bad NUMA allocation\n");
-        munmap(A, N * sizeof(uint64_t));
-        free(tgpu);
-        free(HtD);
-        free(DtH);
-        free(HtD_gbs);
-        free(DtH_gbs);
-        exit(EXIT_FAILURE);
-      }
-
-      uint64_t *d_A;
-      HIP_CHECK(hipMalloc(&d_A, N * sizeof(uint64_t)));
-      //HIP_CHECK(hipMemset(d_A, 0, N * sizeof(uint64_t)));
+      uint64_t *d_dest;
+      HIP_CHECK(hipMalloc(&d_dest, N * sizeof(uint64_t)));
 
       double t0 = 0.;
       double t1 = 0.;
@@ -266,41 +216,16 @@ usage:
 
 	HIP_CHECK(hipDeviceSynchronize());
 	t0 = get_elapsedtime();
-        HIP_CHECK(hipMemcpyAsync(d_A, A, N * sizeof(uint64_t), hipMemcpyHostToDevice, 0));
+        HIP_CHECK(hipMemcpyAsync(d_dest, d_src, N * sizeof(uint64_t), hipMemcpyDeviceToDevice, 0));
         HIP_CHECK(hipStreamSynchronize(0));
 	t1 = get_elapsedtime();
-
-#if 0
-	if(!device_copy)
-	{
-          t0 = get_elapsedtime(); 
-          HIP_CHECK(hipMemcpyAsync(d_A, A, N * sizeof(uint64_t), hipMemcpyHostToDevice, 0));
-          HIP_CHECK(hipStreamSynchronize(0));
-	  t1 = get_elapsedtime();
-	}
-	else
-	{
-          t0 = get_elapsedtime(); 
-	  copy<<<dimGrid, dimBlock, 0, hipStreamDefault>>>(d_A, A, N);
-          HIP_CHECK(hipStreamSynchronize(0));
-	  t1 = get_elapsedtime();
-	} 
-#endif
 
 	if(k == 0) { continue; }
 	if(verbose)
 	{
-	  fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", coreId, deviceId, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
+	  fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", gpu_src, gpu_dest, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
 	}
         duration += (t1 - t0);
-#ifdef DEBUG
-        get_mempolicy(&allocnumaid, NULL, 0, (void*)A, MPOL_F_NODE | MPOL_F_ADDR);
-        if(allocnumaid != cur_numanode)
-        {
-          fprintf(stderr, "FATAL ERROR!!\n");
-          exit(-1);
-        }
-#endif
       }
       duration /= nb_test-1;
 
@@ -308,77 +233,48 @@ usage:
       if(verbose)
       {
         fprintf(stdout, "Performance results: \n");
-        fprintf(stdout, "HostToDevice>  Time: %lf s\n", duration);
-        fprintf(stdout, "HostToDevice>  Throughput: %.2lf GB/s\n", throughput);
+        fprintf(stdout, "CE_DeviceToDevice>  Time: %lf s\n", duration);
+        fprintf(stdout, "CE_DeviceToDevice>  Throughput: %.2lf GB/s\n", throughput);
       }
-      HtD[coreId * gpucount + deviceId] = duration;
-      HtD_gbs[coreId * gpucount + deviceId] = throughput;
+      DtD[gpu_src * gpucount + gpu_dest] = duration;
+      DtD_gbs[gpu_src * gpucount + gpu_dest] = throughput;
 
       duration = 0.;
+
       HIP_CHECK(hipDeviceSynchronize());
       for(int k = 0; k < nb_test; ++k)
       {
-
-        HIP_CHECK(hipDeviceSynchronize());
-	if(check)
-	{
-	  init<<<dimGrid, dimBlock, 0, hipStreamDefault>>>(d_A, (uint64_t)k, N);
-          HIP_CHECK(hipDeviceSynchronize());
-	  if(check && (d_A[0] != (uint64_t)k))
-	  {
-	    fprintf(stderr, "BAD INIT!!\n");
-	    exit(-1);
-	  }
-	}
-        HIP_CHECK(hipDeviceSynchronize());
-	if(!device_copy)
-	{
-          t0 = get_elapsedtime(); 
-          HIP_CHECK(hipMemcpyAsync(A, d_A, N * sizeof(uint64_t), hipMemcpyDeviceToHost, 0));
-          HIP_CHECK(hipStreamSynchronize(0));
-	  t1 = get_elapsedtime();
-	}
-	else
-	{
-          t0 = get_elapsedtime(); 
-	  copy<<<dimGrid, dimBlock, 0, hipStreamDefault>>>(A, d_A, N);
-          HIP_CHECK(hipStreamSynchronize(0));
-	  t1 = get_elapsedtime();
-	  if(check)
-	  {
-	    for(int toto = 0; toto < N; ++toto)
-	    {
-	            if(A[toto] != uint64_t(k))
-	            {
-	              fprintf(stderr, "%d BAD TERMINATION!!!\n", toto);
-	              exit(-1);
-	            }
-	    }
-	  }
-	} 
+        t0 = get_elapsedtime(); 
+	copy<<<dimGrid, dimBlock, 0, hipStreamDefault>>>(d_dest, d_src, N);
+        HIP_CHECK(hipStreamSynchronize(0));
+	t1 = get_elapsedtime();
 
 	if(k == 0) { continue; }
 	if(verbose)
 	{
-	  fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", coreId, deviceId, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
+	  fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", gpu_src, gpu_dest, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
 	}
         duration += (t1 - t0);
       }
+
       duration /= nb_test-1;
+
       throughput = size_in_mbytes / (duration * 1000);
       if(verbose)
       {
-        fprintf(stdout, "DeviceToHost>  Time: %lf s\n", duration);
-        fprintf(stdout, "DeviceToHost>  Throughput: %.2lf GB/s\n\n", throughput);
+        fprintf(stdout, "Performance results: \n");
+        fprintf(stdout, "SM_DeviceToDevice>  Time: %lf s\n", duration);
+        fprintf(stdout, "SM_DeviceToDevice>  Throughput: %.2lf GB/s\n", throughput);
       }
-      DtH[coreId * gpucount + deviceId] = duration;
-      DtH_gbs[coreId * gpucount + deviceId] = throughput;
+      DtDsm[gpu_src * gpucount + gpu_dest] = duration;
+      DtDsm_gbs[gpu_src * gpucount + gpu_dest] = throughput;
 
-      HIP_CHECK(hipFree(d_A));
-      munmap(A, N * sizeof(uint64_t));
-      //coreId += numcores / numanodes;
+      HIP_CHECK(hipFree(d_dest));
+      HIP_CHECK(hipDeviceSynchronize());
     }
-    coreId++;
+    HIP_CHECK(hipFree(d_src));
+    munmap(A, N * sizeof(uint64_t));
+    gpu_src++;
   }
 
   char buff_explicit_time[100];
@@ -391,12 +287,12 @@ usage:
     exit(EXIT_FAILURE);
   }
 
-  fprintf(outputFile, "core\tgpu\tHostToDevice\tDeviceToHost\n");
-  for(int i = 0; i < numcores; ++i)
+  fprintf(outputFile, "core\tgpu\tDeviceToDevice_CopyEngine\tDeviceToDevice_SM\n");
+  for(int i = 0; i < gpucount; ++i)
   {
     for(int d = 0; d < gpucount; ++d)
     {
-      fprintf(outputFile, "%d\t%d\t%lf\t%lf\n", i, tgpu[i * gpucount + d], HtD[i * gpucount + d], DtH[i * gpucount + d]);
+      fprintf(outputFile, "%d\t%d\t%lf\t%lf\n", i, tgpu[i * gpucount + d], DtD[i * gpucount + d], DtDsm[i * gpucount + d]);
     }
   }
 
@@ -411,12 +307,12 @@ usage:
     exit(EXIT_FAILURE);
   }
 
-  fprintf(outputFile, "core\tgpu\tHostToDevice\tDeviceToHost\n");
-  for(int i = 0; i < numcores; ++i)
+  fprintf(outputFile, "core\tgpu\tDeviceToDevice_CopyEngine\tDeviceToDevice_SM\n");
+  for(int i = 0; i < gpucount; ++i)
   {
     for(int d = 0; d < gpucount; ++d)
     {
-      fprintf(outputFile, "%d\t%d\t%lf\t%lf\n", i, tgpu[i * gpucount + d], HtD_gbs[i * gpucount + d], DtH_gbs[i * gpucount + d]);
+      fprintf(outputFile, "%d\t%d\t%lf\t%lf\n", i, tgpu[i * gpucount + d], DtD_gbs[i * gpucount + d],DtDsm_gbs[i * gpucount + d]);
     }
   }
 
@@ -426,10 +322,8 @@ usage:
   fprintf(stdout, "\tTime: %s\n", buff_explicit_time);
 
   free(tgpu);
-  free(HtD);
-  free(DtH);
-  free(HtD_gbs);
-  free(DtH_gbs);
+  free(DtD);
+  free(DtD_gbs);
 
   exit(EXIT_SUCCESS);
 }

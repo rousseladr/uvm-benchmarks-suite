@@ -14,21 +14,6 @@
 #include <inttypes.h>
 #include <sys/mman.h>
 
-constexpr int error_exit_code = -1;
-
-/// \brief Checks if the provided error code is \p hipSuccess and if not,
-/// prints an error message to the standard error output and terminates the program
-/// with an error code.
-#define HIP_CHECK(condition)                                                                \
-    {                                                                                       \
-        const hipError_t error = condition;                                                 \
-        if(error != hipSuccess)                                                             \
-        {                                                                                   \
-            fprintf(stderr, "An error encountered: \" %s \" at %s:%d\n", hipGetErrorString(error), __FILE__ ,__LINE__);                          \
-            exit(error_exit_code);                                                     \
-        }                                                                                   \
-    }
-
 #define gettime(t) clock_gettime(CLOCK_MONOTONIC_RAW, t)
 #define get_sub_seconde(t) (1e-9*(double)t.tv_nsec)
 /** return time in second
@@ -46,22 +31,6 @@ double get_elapsedtime(void)
 #define handle_error_en(en, msg) \
   do { errno = en; perror(msg); exit(EXIT_FAILURE); } while (0)
 
-__global__ void copy( uint64_t* dst, uint64_t* src, size_t n )
-{
-    for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < n; i+= blockDim.x * gridDim.x )
-    {
-        dst[i] = src[i];
-    }
-}
-
-__global__ void init( uint64_t* dst, uint64_t val, size_t n )
-{
-    for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < n; i+= blockDim.x * gridDim.x )
-    {
-        dst[i] = val;
-    }
-}
-
 int main(int argc, char *argv[])
 {
   int nb_test = 25;
@@ -69,11 +38,9 @@ int main(int argc, char *argv[])
   int cpu = -1;
   uint64_t size_in_mbytes = 100;
   bool verbose = false;
-  bool device_copy = false;
-  bool check = false;
 
   int opt;
-  while ((opt = getopt(argc, argv, "vhs:i:dc")) != -1)
+  while ((opt = getopt(argc, argv, "vhs:i:")) != -1)
   {
     switch (opt)
     {
@@ -86,12 +53,6 @@ int main(int argc, char *argv[])
       case 'v':
         verbose = true;
         break;
-      case 'c':
-        check = true;
-        break;
-      case 'd':
-	device_copy = true;
-	break;
       case 'h':
         goto usage;
         break;
@@ -103,24 +64,25 @@ int main(int argc, char *argv[])
   if (optind != argc)
   {
 usage:
-    fprintf(stdout, "CUDA Bench - Async. Memory Transfers Throughput evaluation with NUMA consideration 1.0.0\n");
-    fprintf(stdout, "usage: numa_memcpy-async.exe\n\t[-s size in MB]\n\t[-h print this help]\n");
+    fprintf(stdout, "CUDA Bench - Explicit Memory Transfers Throughput evaluation with NUMA consideration 1.0.0\n");
+    fprintf(stdout, "usage: numa_memcpy.exe\n\t[-s size in MB]\n\t[-h print this help]\n");
     fprintf(stdout, "\nPlot results using python3:\n");
-    fprintf(stdout, "numa_memcpy-async.exe -s <arg> && python3 plot.py <arg>\n");
+    fprintf(stdout, "numa_memcpy.exe -s <arg> && python3 plot.py <arg>\n");
     exit(EXIT_SUCCESS);
   }
 
-  nb_test+=1;
+  nb_test++;
+
   cpu_set_t cpuset;
   pthread_t thread;
 
   thread = pthread_self();
 
-  int numcores = sysconf(_SC_NPROCESSORS_ONLN); // divided by 2 because of hyperthreading
+  int numcores = sysconf(_SC_NPROCESSORS_ONLN);
   int numanodes = numa_num_configured_nodes();
 
   int gpucount = -1;
-  HIP_CHECK(hipGetDeviceCount(&gpucount));
+  hipGetDeviceCount(&gpucount);
 
   double duration = 0.;
   int *tgpu = (int*)malloc(sizeof(int) * numcores * gpucount);
@@ -204,7 +166,7 @@ usage:
 
     if(j == CPU_SETSIZE)
     {
-      fprintf(stderr, "FATAL ERROR! Don't know on which core the thread is placed\n");
+      fprintf(stdout, "FATAL ERROR! Don't know on which core the thread is placed\n");
       exit(EXIT_FAILURE);
     }
 
@@ -217,75 +179,61 @@ usage:
 
     for(int deviceId = 0; deviceId < gpucount; ++deviceId)
     {
-      HIP_CHECK(hipSetDevice(deviceId));
+      hipSetDevice(deviceId);
       if(verbose)
       {
         fprintf(stdout, "Set Device to %d\n", deviceId);
       }
       tgpu[coreId * gpucount + deviceId] = deviceId;
 
-      hipStream_t stream;
-      HIP_CHECK(hipStreamCreate(&stream));
-
-      hipEvent_t start, stop;
-      HIP_CHECK(hipEventCreate(&start));
-      HIP_CHECK(hipEventCreate(&stop));
-
       uint64_t *A;
-      HIP_CHECK(hipHostMalloc(&A, N * sizeof(uint64_t)));
+      A = (uint64_t*) mmap(0, N * sizeof(uint64_t), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+      //A = (uint64_t*) numa_alloc_onnode(N * sizeof(uint64_t), cur_numanode);
 
       for(int i = 0 ; i < N; ++i)
       {
         A[i] = i;
       }
 
-      //int allocnumaid = -1;
-      //get_mempolicy(&allocnumaid, NULL, 0, (void*)A, MPOL_F_NODE | MPOL_F_ADDR);
-      //if(allocnumaid != cur_numanode)
-      //{
-      //  fprintf(stderr, "ERROR: bad NUMA allocation\n");
-      //  hipHostFree(A);
-      //  free(tgpu);
-      //  free(HtD);
-      //  free(DtH);
-      //  free(HtD_gbs);
-      //  free(DtH_gbs);
-      //  exit(EXIT_FAILURE);
-      //}
+      int allocnumaid = -1;
+      get_mempolicy(&allocnumaid, NULL, 0, (void*)A, MPOL_F_NODE | MPOL_F_ADDR);
+      if(allocnumaid != cur_numanode)
+      {
+        fprintf(stderr, "ERROR: bad NUMA allocation\n");
+        munmap(A, N * sizeof(uint64_t));
+        free(tgpu);
+        free(HtD);
+        free(DtH);
+        free(HtD_gbs);
+        free(DtH_gbs);
+        exit(EXIT_FAILURE);
+      }
 
       uint64_t *d_A;
-      HIP_CHECK(hipMalloc(&d_A, N * sizeof(uint64_t)));
+      hipMalloc(&d_A, N * sizeof(uint64_t));
+      hipMemset(d_A, 0, N * sizeof(uint64_t));
 
+      double t0 = 0.;
+      double t1 = 0.;
       duration = 0.;
       double throughput = 0.;
-      double t0 = 0., t1 = 0.;
 
-      dim3  dimBlock(64, 1, 1);
-      dim3  dimGrid((N + dimBlock.x - 1)/dimBlock.x, 1, 1);
-
-      HIP_CHECK(hipDeviceSynchronize());
+      hipDeviceSynchronize();
       for(int k = 0; k < nb_test; ++k)
       {
-        HIP_CHECK(hipStreamSynchronize(stream));
 
-	if(check)
-	{
-		for(int toto = 0; toto < N; ++toto) A[toto] = (uint64_t)k;
-	  if(check && (A[0] != (uint64_t)k))
-	  {
-	    fprintf(stderr, "BAD INIT!!\n");
-	    exit(-1);
-	  }
-	}
-
+	hipDeviceSynchronize();
 	t0 = get_elapsedtime();
-        HIP_CHECK(hipMemcpyAsync(d_A, A, N * sizeof(uint64_t), hipMemcpyHostToDevice, stream));
-	HIP_CHECK(hipStreamSynchronize(stream));
+        memcpy(d_A, A, N * sizeof(uint64_t));
+        hipStreamSynchronize(0);
 	t1 = get_elapsedtime();
 
 	if(k == 0) { continue; }
+	if(verbose)
+	{
+	  fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", coreId, deviceId, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
+	}
         duration += (t1 - t0);
-
 #ifdef DEBUG
         get_mempolicy(&allocnumaid, NULL, 0, (void*)A, MPOL_F_NODE | MPOL_F_ADDR);
         if(allocnumaid != cur_numanode)
@@ -295,8 +243,8 @@ usage:
         }
 #endif
       }
-
       duration /= nb_test-1;
+
       throughput = size_in_mbytes / (duration * 1000);
       if(verbose)
       {
@@ -308,52 +256,23 @@ usage:
       HtD_gbs[coreId * gpucount + deviceId] = throughput;
 
       duration = 0.;
-      t0 = t1 = 0.;
-      HIP_CHECK(hipDeviceSynchronize());
+      hipDeviceSynchronize();
       for(int k = 0; k < nb_test; ++k)
       {
-        HIP_CHECK(hipDeviceSynchronize());
-	if(check)
-	{
-	  init<<<dimGrid, dimBlock, 0, hipStreamDefault>>>(d_A, (uint64_t)k, N);
-          HIP_CHECK(hipDeviceSynchronize());
-	  if(check && (d_A[0] != (uint64_t)k))
-	  {
-	    fprintf(stderr, "BAD INIT!!\n");
-	    exit(-1);
-	  }
-	}
-        HIP_CHECK(hipDeviceSynchronize());
-	if(!device_copy)
-	{
-	  t0 = get_elapsedtime();
-          HIP_CHECK(hipMemcpyAsync(A, d_A, N * sizeof(uint64_t), hipMemcpyDeviceToHost, stream));
-	  HIP_CHECK(hipStreamSynchronize(stream));
-	  t1 = get_elapsedtime();
-	}
-	else
-	{
-          t0 = get_elapsedtime(); 
-	  copy<<<dimGrid, dimBlock, 0, stream>>>(A, d_A, N);
-          HIP_CHECK(hipStreamSynchronize(stream));
-	  t1 = get_elapsedtime();
-	  if(check)
-	  {
-	    for(int toto = 0; toto < N; ++toto)
-	    {
-	            if(A[toto] != uint64_t(k))
-	            {
-	              fprintf(stderr, "%d BAD TERMINATION!!!\n", toto);
-	              exit(-1);
-	            }
-	    }
-	  }
-	} 
+
+	hipDeviceSynchronize();
+        t0 = get_elapsedtime(); 
+        memcpy(A, d_A, N * sizeof(uint64_t));
+        hipStreamSynchronize(0);
+	t1 = get_elapsedtime();
 
 	if(k == 0) { continue; }
+	if(verbose)
+	{
+	  fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", coreId, deviceId, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
+	}
         duration += (t1 - t0);
       }
-
       duration /= nb_test-1;
       throughput = size_in_mbytes / (duration * 1000);
       if(verbose)
@@ -364,20 +283,20 @@ usage:
       DtH[coreId * gpucount + deviceId] = duration;
       DtH_gbs[coreId * gpucount + deviceId] = throughput;
 
-      HIP_CHECK(hipFree(d_A));
-      HIP_CHECK(hipHostFree(A));
+      hipFree(d_A);
+      munmap(A, N * sizeof(uint64_t));
       //coreId += numcores / numanodes;
     }
     coreId++;
   }
 
-  char buff_memcpyasync_time[100];
-  snprintf(buff_memcpyasync_time, 100, "%lu-MB_numa_memcpyasync_time.csv", size_in_mbytes);
+  char buff_explicit_time[100];
+  snprintf(buff_explicit_time, 100, "%lu-MB_numa_memcpy_time.csv", size_in_mbytes);
   FILE * outputFile;
-  outputFile = fopen( buff_memcpyasync_time, "w+" );
+  outputFile = fopen( buff_explicit_time, "w+" );
   if (outputFile == NULL)
   {
-    printf( "Cannot open file %s\n", buff_memcpyasync_time );
+    printf( "Cannot open file %s\n", buff_explicit_time );
     exit(EXIT_FAILURE);
   }
 
@@ -392,12 +311,12 @@ usage:
 
   fclose(outputFile);
 
-  char buff_memcpyasync_gbs[100];
-  snprintf(buff_memcpyasync_gbs, 100, "%lu-MB_numa_memcpyasync_gbs.csv", size_in_mbytes);
-  outputFile = fopen( buff_memcpyasync_gbs, "w+" );
+  char buff_explicit_gbs[100];
+  snprintf(buff_explicit_gbs, 100, "%lu-MB_numa_memcpy_gbs.csv", size_in_mbytes);
+  outputFile = fopen( buff_explicit_gbs, "w+" );
   if (outputFile == NULL)
   {
-    printf( "Cannot open file %s\n", buff_memcpyasync_gbs );
+    printf( "Cannot open file %s\n", buff_explicit_gbs );
     exit(EXIT_FAILURE);
   }
 
@@ -412,8 +331,8 @@ usage:
 
   fclose(outputFile);
 
-  fprintf(stdout, "Results saved in:\n\tGB/s: %s\n", buff_memcpyasync_gbs);
-  fprintf(stdout, "\tTime: %s\n", buff_memcpyasync_time);
+  fprintf(stdout, "Results saved in:\n\tGB/s: %s\n", buff_explicit_gbs);
+  fprintf(stdout, "\tTime: %s\n", buff_explicit_time);
 
   free(tgpu);
   free(HtD);
