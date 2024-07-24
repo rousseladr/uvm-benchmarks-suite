@@ -67,8 +67,8 @@ int main(int argc, char *argv[])
         goto usage;
         break;
       case 'd':
-	device_copy = true;
-	break;
+      	device_copy = true;
+	      break;
       default:
         goto usage;
     }
@@ -275,7 +275,7 @@ usage:
 	cudaDeviceSynchronize();
 	if(!device_copy)
 	{
-          t0 = get_elapsedtime(); 
+          t0 = get_elapsedtime();
           cudaMemcpyAsync(A, d_A, N * sizeof(uint64_t), cudaMemcpyDeviceToHost, 0);
           cudaStreamSynchronize(0);
 	  t1 = get_elapsedtime();
@@ -284,7 +284,7 @@ usage:
 	{
 	  dim3  dimBlock(64, 1, 1);
   	  dim3  dimGrid((N + dimBlock.x - 1)/dimBlock.x, 1, 1);
-          t0 = get_elapsedtime(); 
+          t0 = get_elapsedtime();
 	  copy<<<dimGrid, dimBlock>>>(A, d_A, N);
           cudaStreamSynchronize(0);
 	  t1 = get_elapsedtime();
@@ -309,7 +309,6 @@ usage:
 
       cudaFree(d_A);
       munmap(A, N * sizeof(uint64_t));
-      //coreId += numcores / numanodes;
     }
     coreId++;
   }
