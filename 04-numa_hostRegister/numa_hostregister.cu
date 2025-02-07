@@ -13,6 +13,21 @@
 #include <inttypes.h>
 #include <stdbool.h>
 
+constexpr int error_exit_code = -1;
+
+/// \brief Checks if the provided error code is \p hipSuccess and if not,
+/// prints an error message to the standard error output and terminates the program
+/// with an error code.
+#define HIP_CHECK(condition)                                                                \
+    {                                                                                       \
+        const hipError_t error = condition;                                                 \
+        if(error != hipSuccess)                                                             \
+        {                                                                                   \
+            fprintf(stderr, "An error encountered: \" %s \" at %s:%d\n", hipGetErrorString(error), __FILE__ ,__LINE__);                          \
+            exit(error_exit_code);                                                     \
+        }                                                                                   \
+    }
+
 #define gettime(t) clock_gettime(CLOCK_MONOTONIC_RAW, t)
 #define get_sub_seconde(t) (1e-9*(double)t.tv_nsec)
 /** return time in second
@@ -23,6 +38,95 @@ double get_elapsedtime(void)
   int err = gettime(&st);
   if (err !=0) return 0;
   return (double)st.tv_sec + get_sub_seconde(st);
+}
+
+/*!
+  * Function used to eliminate redundant cpus (i.e. hyperthreads) from a list of cpus
+  * @param[in] num_cpus         number of cpus to test
+  * @param[in] cpus             list of cpus to test 
+  * @param[out] nb_phys_cpus    number of physical cpus, without hyperthreads 
+  * @return                     List of physical cpus
+ */
+int* eliminate_hyperthreads(int num_cpus, int* cpus, int* nb_phys_cpus)
+{
+  bool* smt = (bool*)malloc(sizeof(bool) * CPU_SETSIZE);
+  memset((void*)smt, 0, sizeof(bool) * CPU_SETSIZE);
+
+  FILE* input;
+  *nb_phys_cpus = 0;
+  // This loop eliminates the hyper-threads to only conserve one PU per processor
+  for(int i = 0; i < num_cpus; ++i)
+  {
+    char input_file[1024];
+    sprintf(input_file, "/sys/devices/system/cpu/cpu%d/topology/thread_siblings_list", cpus[i]);
+    input = fopen(input_file, "r");
+    if(input == NULL)
+    {
+      perror("fopen");
+      exit(EXIT_FAILURE);
+    }
+    char* line = NULL;
+    size_t len;
+    // Get the list of SMT on the cpu cpus[i]
+    // Format gives list of PU separated by commas
+    if(getline(&line, &len, input) == -1)
+    {
+      perror("getline");
+      exit(EXIT_FAILURE);
+    }
+
+    // We are only interested by the first PU in the list,
+    // so find the 1st occurence of the comma
+    char* delim = strpbrk(line, ",");
+    if(delim != NULL)
+    {
+      // Ends the line by filling it with '\0'
+      // and read the value before ',' symbol
+      *delim = '\0';
+    }
+
+    // Convert into integer
+    int cur_cpu = atoi(line);
+
+    // if cur_cpu has already been set (false in smt array), then continue
+    // Else, set the pu to true
+    if(!smt[cur_cpu] && cur_cpu >= 0 && cur_cpu < CPU_SETSIZE)
+    {
+      *nb_phys_cpus += 1;
+      smt[cur_cpu] = true;
+    }
+    fclose(input);
+    if(line != NULL)
+    {
+      free(line);
+    }
+  }
+  int* phys_cpus = (int*) malloc(sizeof(int) * (*nb_phys_cpus));
+
+  int li = 0;
+  for(int i = 0; i < CPU_SETSIZE; ++i)
+  {
+    if(smt[i])
+    {
+      phys_cpus[li] = i;
+      li++;
+    }
+  }
+  free(smt);
+
+  return phys_cpus;
+}
+
+void pinThread(int cpu) {
+  cpu_set_t set;
+  CPU_ZERO(&set);
+  CPU_SET(cpu, &set);
+  pthread_t current_thread = pthread_self();
+  if(pthread_setaffinity_np(current_thread, sizeof(cpu_set_t), &set) != 0)
+  {
+    perror("pthread_setaffinity_np");
+    exit(EXIT_FAILURE);
+  }
 }
 
 //#define N (unsigned long int)1E6
@@ -88,8 +192,37 @@ usage:
   int numcores = sysconf(_SC_NPROCESSORS_ONLN); // divided by 2 because of hyperthreading
   int numanodes = numa_num_configured_nodes();
 
+  cpu_set_t set;
+  CPU_ZERO(&set);
+  if (sched_getaffinity(0, sizeof(set), &set) != 0)
+  {
+    perror("sched_getaffinity");
+    exit(EXIT_FAILURE);
+  }
+
+  // enumerate available CPUs
+  int* cpus = (int*)malloc(sizeof(int) * numcores);
+  int li=0;
+  for (int i = 0; i < CPU_SETSIZE; ++i)
+  {
+    if (CPU_ISSET(i, &set))
+    {
+      cpus[li] = i;
+      li++;
+    }
+  }
+  numcores = li;
+
+  int nb_phys_cpus = 0;
+  int* phys_cpus = eliminate_hyperthreads(numcores, cpus, &nb_phys_cpus);
+
+  free(cpus);
+
+  numcores = nb_phys_cpus;
+  cpus = phys_cpus;
+
   int gpucount = -1;
-  hipGetDeviceCount(&gpucount);
+  HIP_CHECK(hipGetDeviceCount(&gpucount));
 
   //double t0 = 0., t1 = 0., duration = 0.;
   double duration = 0.;
@@ -135,10 +268,10 @@ usage:
   }
 #endif
 
-  int coreId = 0;
 
-  while( coreId < numcores)
+  for (int i = 0; i < numcores; ++i)
   {
+    int coreId = cpus[i];
 
     if(coreId < 0 || coreId >= numcores)
     {
@@ -151,59 +284,32 @@ usage:
       printf("Target core %d\n", coreId);
     }
     /* Set affinity mask to include CPUs coreId */
+    pinThread(coreId);
 
-    CPU_ZERO(&cpuset);
-    CPU_SET(coreId, &cpuset);
-
-    s = pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
-    if (s != 0)
-      handle_error_en(s, "pthread_setaffinity_np");
-
-    /* Check the actual affinity mask assigned to the thread */
-
-    s = pthread_getaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
-    if (s != 0)
-      handle_error_en(s, "pthread_getaffinity_np");
-
-    for (j = 0; j < CPU_SETSIZE; j++)
-    {
-      if (CPU_ISSET(j, &cpuset))
-      {
-        cpu = j;
-        break;
-      }
-    }
-
-    if(j == CPU_SETSIZE)
-    {
-      printf("FATAL ERROR! Don't know on which core the thread is placed\n");
-      exit(EXIT_FAILURE);
-    }
-
-    int cur_numanode = numa_node_of_cpu(cpu);
+    int cur_numanode = numa_node_of_cpu(coreId);
     if(verbose)
     {
-      fprintf(stdout, "Running on CPU %d of %d\n", cpu, numcores);
+      fprintf(stdout, "Running on CPU %d of %d\n", coreId, numcores);
       fprintf(stdout, "Running on NUMA %d of %d\n", cur_numanode, numanodes);
     }
 
     for(int deviceId = 0; deviceId < gpucount; ++deviceId)
     {
-      hipSetDevice(deviceId);
+      HIP_CHECK(hipSetDevice(deviceId));
       if(verbose)
       {
         fprintf(stdout, "Set Device to %d\n", deviceId);
       }
-      tgpu[coreId * gpucount + deviceId] = deviceId;
+      tgpu[i * gpucount + deviceId] = deviceId;
 
       uint64_t *d_A;
       hipStream_t stream;
 
       // hipMallocManaged(&d_A, N * sizeof(uint64_t));
       d_A = (uint64_t*)malloc(sizeof(uint64_t) * N);
-      hipHostRegister(&d_A, N * sizeof(uint64_t), hipHostRegisterMapped);
-      hipMemAdvise(d_A, N * sizeof(uint64_t), hipMemAdviseSetPreferredLocation, hipCpuDeviceId);
-      hipStreamCreate(&stream);
+      HIP_CHECK(hipHostRegister(&d_A, N * sizeof(uint64_t), hipHostRegisterMapped));
+      HIP_CHECK(hipMemAdvise(d_A, N * sizeof(uint64_t), hipMemAdviseSetPreferredLocation, hipCpuDeviceId));
+      HIP_CHECK(hipStreamCreate(&stream));
 
       double t0 = 0., t1 = 0.;
       duration = 0.;
@@ -213,11 +319,11 @@ usage:
         {
           d_A[i] += (uint64_t)i;
         }
-        hipDeviceSynchronize();
+        HIP_CHECK(hipDeviceSynchronize());
 
 	t0 = get_elapsedtime();
-        hipMemPrefetchAsync(d_A, N * sizeof(uint64_t), deviceId, stream);
-        hipStreamSynchronize(stream);
+        HIP_CHECK(hipMemPrefetchAsync(d_A, N * sizeof(uint64_t), deviceId, stream));
+        HIP_CHECK(hipStreamSynchronize(stream));
 	t1 = get_elapsedtime();
 
 	if(k == 0) { continue; }
@@ -236,15 +342,15 @@ usage:
         fprintf(stdout, "HostToDevice>  Time: %lf s\n", duration);
         fprintf(stdout, "HostToDevice>  Throughput: %.2lf GB/s\n", throughput);
       }
-      HtD[coreId * gpucount + deviceId] = duration;
-      HtD_gbs[coreId * gpucount + deviceId] = throughput;
-      hipFree(d_A);
-      hipStreamSynchronize(stream);
+      HtD[i * gpucount + deviceId] = duration;
+      HtD_gbs[i * gpucount + deviceId] = throughput;
+      HIP_CHECK(hipFree(d_A));
+      HIP_CHECK(hipStreamSynchronize(stream));
 
       uint64_t *d_B;
-      hipMallocManaged(&d_B, N * sizeof(uint64_t));
-      hipMemAdvise(d_B, N * sizeof(uint64_t), hipMemAdviseSetPreferredLocation, deviceId);
-      hipDeviceSynchronize();
+      HIP_CHECK(hipMallocManaged(&d_B, N * sizeof(uint64_t)));
+      HIP_CHECK(hipMemAdvise(d_B, N * sizeof(uint64_t), hipMemAdviseSetPreferredLocation, deviceId));
+      HIP_CHECK(hipDeviceSynchronize());
 
       dim3 blockSize(32, 1, 1);
       int nbBlocks = (N + 32 - 1) / 32;
@@ -255,21 +361,21 @@ usage:
       {
         // First: push data on GPU
         init<<<gridSize, blockSize>>>(d_B, 0x0, N);
-        hipDeviceSynchronize();
+        HIP_CHECK(hipDeviceSynchronize());
 
         t0 = get_elapsedtime(); 
         // Second: transfer data from GPU to CPU using prefetch mecanism
-        hipMemPrefetchAsync(d_B, N * sizeof(uint64_t), hipCpuDeviceId, stream);
+        HIP_CHECK(hipMemPrefetchAsync(d_B, N * sizeof(uint64_t), hipCpuDeviceId, stream));
         // Wait until completion
-        hipStreamSynchronize(stream);
+        HIP_CHECK(hipStreamSynchronize(stream));
 	t1 = get_elapsedtime();
 
 	if(k == 0) { continue; }
         duration += (t1 - t0);
       }
 
-      hipFree(d_B);
-      hipStreamDestroy(stream);
+      HIP_CHECK(hipFree(d_B));
+      HIP_CHECK(hipStreamDestroy(stream));
 
       duration /= nb_test;
       throughput = size_in_mbytes / (duration * 1000);
@@ -278,11 +384,10 @@ usage:
         fprintf(stdout, "DeviceToHost>  Time: %lf s\n", duration);
         fprintf(stdout, "DeviceToHost>  Throughput: %.2lf GB/s\n\n", throughput);
       }
-      DtH[coreId * gpucount + deviceId] = duration;
-      DtH_gbs[coreId * gpucount + deviceId] = throughput;
+      DtH[i * gpucount + deviceId] = duration;
+      DtH_gbs[i * gpucount + deviceId] = throughput;
 
     }
-    coreId++;
   }
 
   char buff_implicit_time[100];
@@ -300,7 +405,7 @@ usage:
   {
     for(int d = 0; d < gpucount; ++d)
     {
-      fprintf(outputFile, "%d\t%d\t%lf\t%lf\n", i, tgpu[i * gpucount + d], HtD[i * gpucount + d], DtH[i * gpucount + d]);
+      fprintf(outputFile, "%d\t%d\t%lf\t%lf\n", cpus[i], tgpu[i * gpucount + d], HtD[i * gpucount + d], DtH[i * gpucount + d]);
     }
   }
 
@@ -320,7 +425,7 @@ usage:
   {
     for(int d = 0; d < gpucount; ++d)
     {
-      fprintf(outputFile, "%d\t%d\t%lf\t%lf\n", i, tgpu[i * gpucount + d], HtD_gbs[i * gpucount + d], DtH_gbs[i * gpucount + d]);
+      fprintf(outputFile, "%d\t%d\t%lf\t%lf\n", cpus[i], tgpu[i * gpucount + d], HtD_gbs[i * gpucount + d], DtH_gbs[i * gpucount + d]);
     }
   }
 
