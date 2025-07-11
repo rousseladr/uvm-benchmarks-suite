@@ -278,7 +278,7 @@ usage:
   }
 
   char buff_explicit_time[100];
-  snprintf(buff_explicit_time, 100, "%lu-MB_numa_explicit_time.csv", size_in_mbytes);
+  snprintf(buff_explicit_time, 100, "%lu-MB_kerneltime.csv", size_in_mbytes);
   FILE * outputFile;
   outputFile = fopen( buff_explicit_time, "w+" );
   if (outputFile == NULL)
@@ -299,7 +299,7 @@ usage:
   fclose(outputFile);
 
   char buff_explicit_gbs[100];
-  snprintf(buff_explicit_gbs, 100, "%lu-MB_numa_explicit_gbs.csv", size_in_mbytes);
+  snprintf(buff_explicit_gbs, 100, "%lu-MB_kernel_gbs.csv", size_in_mbytes);
   outputFile = fopen( buff_explicit_gbs, "w+" );
   if (outputFile == NULL)
   {
