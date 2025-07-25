@@ -278,7 +278,7 @@ usage:
   }
 
   char buff_explicit_time[100];
-  snprintf(buff_explicit_time, 100, "%lu-MB_kerneltime.csv", size_in_mbytes);
+  snprintf(buff_explicit_time, 100, "%lu-MB_kernel_time.csv", size_in_mbytes);
   FILE * outputFile;
   outputFile = fopen( buff_explicit_time, "w+" );
   if (outputFile == NULL)
