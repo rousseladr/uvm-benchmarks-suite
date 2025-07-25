@@ -231,6 +231,7 @@ usage:
       {
         A = (uint64_t*) mmap(0, N * sizeof(uint64_t), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
 
+#if 0
         int allocnumaid = -1;
         get_mempolicy(&allocnumaid, NULL, 0, (void*)A, MPOL_F_NODE | MPOL_F_ADDR);
         if(allocnumaid != cur_numanode)
@@ -244,6 +245,7 @@ usage:
           free(DtH_gbs);
           exit(EXIT_FAILURE);
         }
+#endif
       }
       //A = (uint64_t*) numa_alloc_onnode(N * sizeof(uint64_t), cur_numanode);
 
