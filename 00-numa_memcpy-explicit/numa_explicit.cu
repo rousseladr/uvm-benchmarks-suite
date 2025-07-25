@@ -48,9 +48,11 @@ int main(int argc, char *argv[])
   uint64_t size_in_mbytes = 100;
   bool verbose = false;
   bool device_copy = false;
+  bool host = true;
+  bool cudaAlloc = true;
 
   int opt;
-  while ((opt = getopt(argc, argv, "vhs:i:d")) != -1)
+  while ((opt = getopt(argc, argv, "vhs:i:cdm")) != -1)
   {
     switch (opt)
     {
@@ -66,9 +68,15 @@ int main(int argc, char *argv[])
       case 'h':
         goto usage;
         break;
-      case 'd':
+      case 'c':
       	device_copy = true;
 	      break;
+      case 'd':
+      	host = false;
+	      break;
+      case 'm':
+        cudaAlloc = false;
+        break;
       default:
         goto usage;
     }
@@ -223,7 +231,14 @@ usage:
       }
 
       uint64_t *d_A;
-      cudaMalloc(&d_A, N * sizeof(uint64_t));
+      if(cudaAlloc)
+      {
+        cudaMalloc(&d_A, N * sizeof(uint64_t));
+      }
+      else
+      {
+        d_A = (uint64_t*)mmap ( NULL, N * sizeof(uint64_t), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0 );
+      }
 
       double t0 = 0.;
       double t1 = 0.;
@@ -234,17 +249,41 @@ usage:
       for(int k = 0; k < nb_test; ++k)
       {
 
-	cudaDeviceSynchronize();
-	t0 = get_elapsedtime();
-        cudaMemcpyAsync(d_A, A, N * sizeof(uint64_t), cudaMemcpyHostToDevice, 0);
-        cudaStreamSynchronize(0);
-	t1 = get_elapsedtime();
+	      cudaDeviceSynchronize();
+	      if(!device_copy)
+	      {
+	        t0 = get_elapsedtime();
+          cudaMemcpyAsync(d_A, A, N * sizeof(uint64_t), cudaMemcpyHostToDevice, 0);
+          cudaStreamSynchronize(0);
+	        t1 = get_elapsedtime();
+        }
+        else
+        {
+          if(host)
+          {
+	          t0 = get_elapsedtime();
+            for(size_t i = 0; i < N; ++i)
+            {
+              d_A[i] = A[i];
+            }
+	          t1 = get_elapsedtime();
+          }
+          else
+          {
+	          dim3  dimBlock(64, 1, 1);
+        	  dim3  dimGrid((N + dimBlock.x - 1)/dimBlock.x, 1, 1);
+            t0 = get_elapsedtime();
+	          copy<<<dimGrid, dimBlock>>>(d_A, A, N);
+            cudaStreamSynchronize(0);
+	          t1 = get_elapsedtime();
+          }
+        }
 
-	if(k == 0) { continue; }
-	if(verbose)
-	{
-	  fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", coreId, deviceId, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
-	}
+	      if(k == 0) { continue; }
+	      if(verbose)
+	      {
+	        fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", coreId, deviceId, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
+	      }
         duration += (t1 - t0);
 #ifdef DEBUG
         get_mempolicy(&allocnumaid, NULL, 0, (void*)A, MPOL_F_NODE | MPOL_F_ADDR);
@@ -272,29 +311,41 @@ usage:
       for(int k = 0; k < nb_test; ++k)
       {
 
-	cudaDeviceSynchronize();
-	if(!device_copy)
-	{
-          t0 = get_elapsedtime();
-          cudaMemcpyAsync(A, d_A, N * sizeof(uint64_t), cudaMemcpyDeviceToHost, 0);
-          cudaStreamSynchronize(0);
-	  t1 = get_elapsedtime();
-	}
-	else
-	{
-	  dim3  dimBlock(64, 1, 1);
-  	  dim3  dimGrid((N + dimBlock.x - 1)/dimBlock.x, 1, 1);
-          t0 = get_elapsedtime();
-	  copy<<<dimGrid, dimBlock>>>(A, d_A, N);
-          cudaStreamSynchronize(0);
-	  t1 = get_elapsedtime();
-	}
+	      cudaDeviceSynchronize();
+	      if(!device_copy)
+	      {
+                t0 = get_elapsedtime();
+                cudaMemcpyAsync(A, d_A, N * sizeof(uint64_t), cudaMemcpyDeviceToHost, 0);
+                cudaStreamSynchronize(0);
+	        t1 = get_elapsedtime();
+	      }
+	      else
+	      {
+          if(host)
+          {
+	          t0 = get_elapsedtime();
+            for(size_t i = 0; i < N; ++i)
+            {
+              A[i] = d_A[i];
+            }
+	          t1 = get_elapsedtime();
+          }
+          else
+          {
+	          dim3  dimBlock(64, 1, 1);
+        	  dim3  dimGrid((N + dimBlock.x - 1)/dimBlock.x, 1, 1);
+            t0 = get_elapsedtime();
+	          copy<<<dimGrid, dimBlock>>>(A, d_A, N);
+            cudaStreamSynchronize(0);
+	          t1 = get_elapsedtime();
+          }
+	      }
 
-	if(k == 0) { continue; }
-	if(verbose)
-	{
-	  fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", coreId, deviceId, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
-	}
+	      if(k == 0) { continue; }
+	      if(verbose)
+	      {
+	        fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", coreId, deviceId, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
+	      }
         duration += (t1 - t0);
       }
       duration /= nb_test-1;
@@ -307,14 +358,42 @@ usage:
       DtH[coreId * gpucount + deviceId] = duration;
       DtH_gbs[coreId * gpucount + deviceId] = throughput;
 
-      cudaFree(d_A);
+      if(cudaAlloc)
+      {
+        cudaFree(d_A);
+      }
+      else
+      {
+        munmap(d_A, N * sizeof(uint64_t));
+      }
       munmap(A, N * sizeof(uint64_t));
     }
     coreId++;
   }
 
   char buff_explicit_time[100];
-  snprintf(buff_explicit_time, 100, "%lu-MB_numa_explicit_time.csv", size_in_mbytes);
+  if(!device_copy)
+  {
+    snprintf(buff_explicit_time, 100, "%lu-MB_numa_explicit_time.csv", size_in_mbytes);
+  }
+  else
+  {
+    if(host)
+    {
+      snprintf(buff_explicit_time, 100, "%lu-MB_numa_explicit_time_copy_host.csv", size_in_mbytes);
+    }
+    else
+    {
+      if(cudaAlloc)
+      {
+        snprintf(buff_explicit_time, 100, "%lu-MB_numa_explicit_time_copy_device_cuda.csv", size_in_mbytes);
+      }
+      else
+      {
+        snprintf(buff_explicit_time, 100, "%lu-MB_numa_explicit_time_copy_device_malloc.csv", size_in_mbytes);
+      }
+    }
+  }
   FILE * outputFile;
   outputFile = fopen( buff_explicit_time, "w+" );
   if (outputFile == NULL)
@@ -335,7 +414,28 @@ usage:
   fclose(outputFile);
 
   char buff_explicit_gbs[100];
-  snprintf(buff_explicit_gbs, 100, "%lu-MB_numa_explicit_gbs.csv", size_in_mbytes);
+  if(!device_copy)
+  {
+    snprintf(buff_explicit_gbs, 100, "%lu-MB_numa_explicit_gbs.csv", size_in_mbytes);
+  }
+  else
+  {
+    if(host)
+    {
+      snprintf(buff_explicit_gbs, 100, "%lu-MB_numa_explicit_gbs_copy_host.csv", size_in_mbytes);
+    }
+    else
+    {
+      if(cudaAlloc)
+      {
+        snprintf(buff_explicit_gbs, 100, "%lu-MB_numa_explicit_gbs_copy_device_cuda.csv", size_in_mbytes);
+      }
+      else
+      {
+        snprintf(buff_explicit_gbs, 100, "%lu-MB_numa_explicit_gbs_copy_device_malloc.csv", size_in_mbytes);
+      }
+    }
+  }
   outputFile = fopen( buff_explicit_gbs, "w+" );
   if (outputFile == NULL)
   {

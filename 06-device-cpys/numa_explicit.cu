@@ -178,9 +178,9 @@ usage:
     uint64_t *d_src;
     CUDA_CHECK(cudaMalloc(&d_src, N * sizeof(uint64_t)));
     CUDA_CHECK(cudaMemcpy(d_src, A, N * sizeof(uint64_t), cudaMemcpyHostToDevice));
-
     for(int gpu_dest = 0; gpu_dest < gpucount; ++gpu_dest)
     {
+
       CUDA_CHECK(cudaSetDevice(gpu_dest));
       if(verbose)
       {
@@ -203,17 +203,17 @@ usage:
       for(int k = 0; k < nb_test; ++k)
       {
 
-	CUDA_CHECK(cudaDeviceSynchronize());
-	t0 = get_elapsedtime();
-        CUDA_CHECK(cudaMemcpyAsync(d_dest, d_src, N * sizeof(uint64_t), cudaMemcpyDeviceToDevice, 0));
-        CUDA_CHECK(cudaStreamSynchronize(0));
-	t1 = get_elapsedtime();
+	      CUDA_CHECK(cudaDeviceSynchronize());
+	      t0 = get_elapsedtime();
+              CUDA_CHECK(cudaMemcpyAsync(d_dest, d_src, N * sizeof(uint64_t), cudaMemcpyDeviceToDevice, 0));
+              CUDA_CHECK(cudaStreamSynchronize(0));
+	      t1 = get_elapsedtime();
 
-	if(k == 0) { continue; }
-	if(verbose)
-	{
-	  fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", gpu_src, gpu_dest, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
-	}
+	      if(k == 0) { continue; }
+	      if(verbose)
+	      {
+	        fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", gpu_src, gpu_dest, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
+	      }
         duration += (t1 - t0);
       }
       duration /= nb_test-1;
@@ -233,17 +233,17 @@ usage:
       CUDA_CHECK(cudaDeviceSynchronize());
       for(int k = 0; k < nb_test; ++k)
       {
-        t0 = get_elapsedtime(); 
-	copy<<<dimGrid, dimBlock, 0, cudaStreamDefault>>>(d_dest, d_src, N);
+        t0 = get_elapsedtime();
+	      copy<<<dimGrid, dimBlock, 0, cudaStreamDefault>>>(d_dest, A, N);
         CUDA_CHECK(cudaStreamSynchronize(0));
-	t1 = get_elapsedtime();
+	      t1 = get_elapsedtime();
 
-	if(k == 0) { continue; }
-	if(verbose)
-	{
-	  fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", gpu_src, gpu_dest, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
-	}
-        duration += (t1 - t0);
+      	if(k == 0) { continue; }
+      	if(verbose)
+      	{
+      	  fprintf(stdout, "(%d, %d) iter: %d | time: %lf | gbs: %lf\n", gpu_src, gpu_dest, k, (t1 - t0), size_in_mbytes / ((t1-t0)*1000));
+      	}
+              duration += (t1 - t0);
       }
 
       duration /= nb_test-1;

@@ -31,6 +31,14 @@ double get_elapsedtime(void)
 #define handle_error_en(en, msg) \
   do { errno = en; perror(msg); exit(EXIT_FAILURE); } while (0)
 
+__global__ void copy( uint64_t* dst, uint64_t* src, size_t n )
+{
+    for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < n; i+= blockDim.x * gridDim.x )
+    {
+        dst[i] = src[i];
+    }
+}
+
 int main(int argc, char *argv[])
 {
   int nb_test = 25;
@@ -38,9 +46,12 @@ int main(int argc, char *argv[])
   int cpu = -1;
   uint64_t size_in_mbytes = 100;
   bool verbose = false;
+  bool device_copy = false;
+  bool host = true;
+  bool cudaAlloc = true;
 
   int opt;
-  while ((opt = getopt(argc, argv, "vhs:i:")) != -1)
+  while ((opt = getopt(argc, argv, "vhs:i:cdm")) != -1)
   {
     switch (opt)
     {
@@ -55,6 +66,15 @@ int main(int argc, char *argv[])
         break;
       case 'h':
         goto usage;
+        break;
+      case 'c':
+      	device_copy = true;
+	      break;
+      case 'd':
+      	host = false;
+	      break;
+      case 'm':
+        cudaAlloc = false;
         break;
       default:
         goto usage;
@@ -215,7 +235,14 @@ usage:
       }
 
       uint64_t *d_A;
-      cudaMalloc(&d_A, N * sizeof(uint64_t));
+      if(cudaAlloc)
+      {
+        cudaMalloc(&d_A, N * sizeof(uint64_t));
+      }
+      else
+      {
+        d_A = (uint64_t*)mmap ( NULL, N * sizeof(uint64_t), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0 );
+      }
 
       duration = 0.;
       double throughput = 0.;
@@ -261,12 +288,24 @@ usage:
       {
         cudaStreamSynchronize(stream);
 
-	t0 = get_elapsedtime();
-        cudaMemcpyAsync(A, d_A, N * sizeof(uint64_t), cudaMemcpyDeviceToHost, stream);
-	cudaStreamSynchronize(stream);
-	t1 = get_elapsedtime();
+	      if(!device_copy)
+	      {
+          t0 = get_elapsedtime();
+          cudaMemcpyAsync(A, d_A, N * sizeof(uint64_t), cudaMemcpyDeviceToHost, stream);
+	        cudaStreamSynchronize(stream);
+	        t1 = get_elapsedtime();
+	      }
+	      else
+	      {
+	        dim3  dimBlock(64, 1, 1);
+  	      dim3  dimGrid((N + dimBlock.x - 1)/dimBlock.x, 1, 1);
+          t0 = get_elapsedtime();
+	        copy<<<dimGrid, dimBlock, 0, stream>>>(A, d_A, N);
+          cudaStreamSynchronize(stream);
+	        t1 = get_elapsedtime();
+        }
 
-	if(k == 0) { continue; }
+	    if(k == 0) { continue; }
         duration += (t1 - t0);
       }
 
@@ -280,7 +319,14 @@ usage:
       DtH[coreId * gpucount + deviceId] = duration;
       DtH_gbs[coreId * gpucount + deviceId] = throughput;
 
-      cudaFree(d_A);
+      if(cudaAlloc)
+      {
+        cudaFree(d_A);
+      }
+      else
+      {
+        munmap(d_A, N * sizeof(uint64_t));
+      }
       cudaFreeHost(A);
       //coreId += numcores / numanodes;
     }
@@ -288,7 +334,29 @@ usage:
   }
 
   char buff_memcpyasync_time[100];
-  snprintf(buff_memcpyasync_time, 100, "%lu-MB_numa_memcpyasync_time.csv", size_in_mbytes);
+  if(!device_copy)
+  {
+    snprintf(buff_memcpyasync_time, 100, "%lu-MB_numa_memcpyasync_time.csv", size_in_mbytes);
+  }
+  else
+  {
+    if(host)
+    {
+      snprintf(buff_memcpyasync_time, 100, "%lu-MB_numa_memcpyasync_time_copy_host.csv", size_in_mbytes);
+    }
+    else
+    {
+      if(cudaAlloc)
+      {
+        snprintf(buff_memcpyasync_time, 100, "%lu-MB_numa_memcpyasync_time_copy_device_cuda.csv", size_in_mbytes);
+      }
+      else
+      {
+        snprintf(buff_memcpyasync_time, 100, "%lu-MB_numa_memcpyasync_time_copy_device_malloc.csv", size_in_mbytes);
+      }
+    }
+  }
+
   FILE * outputFile;
   outputFile = fopen( buff_memcpyasync_time, "w+" );
   if (outputFile == NULL)
@@ -309,7 +377,28 @@ usage:
   fclose(outputFile);
 
   char buff_memcpyasync_gbs[100];
-  snprintf(buff_memcpyasync_gbs, 100, "%lu-MB_numa_memcpyasync_gbs.csv", size_in_mbytes);
+  if(!device_copy)
+  {
+    snprintf(buff_memcpyasync_gbs, 100, "%lu-MB_numa_memcpyasync_gbs.csv", size_in_mbytes);
+  }
+  else
+  {
+    if(host)
+    {
+      snprintf(buff_memcpyasync_gbs, 100, "%lu-MB_numa_memcpyasync_gbs_copy_host.csv", size_in_mbytes);
+    }
+    else
+    {
+      if(cudaAlloc)
+      {
+        snprintf(buff_memcpyasync_gbs, 100, "%lu-MB_numa_memcpyasync_gbs_copy_device_cuda.csv", size_in_mbytes);
+      }
+      else
+      {
+        snprintf(buff_memcpyasync_gbs, 100, "%lu-MB_numa_memcpyasync_gbs_copy_device_malloc.csv", size_in_mbytes);
+      }
+    }
+  }
   outputFile = fopen( buff_memcpyasync_gbs, "w+" );
   if (outputFile == NULL)
   {
